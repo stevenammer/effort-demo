@@ -1,6 +1,6 @@
 # Source and boundaries
 
-The organisation and sentence-classification functions in `public/core/ef.js` and `public/core/semantic.js` come from the existing EFFORT Android app at source revision `9b5d5cd` (October 17, 2026).
+The organisation, sentence-classification and display-reading functions in `public/core/ef.js`, `public/core/semantic.js` and `public/core/readable.js` come from the existing EFFORT Android app at source revision `9b5d5cd` (October 17, 2026).
 
 Changes for this demonstration:
 
@@ -17,3 +17,5 @@ The original app's current offline baseline passed 41 suites and 393 tests on No
 Implementation is AI-assisted. Steven Ammer defines the product requirements and makes the product decisions. This demonstration uses fabricated sample content and doesn't show employer, customer or family records.
 
 The browser continuity adapter follows the existing app's explicit promotion, one-NOW, self-reported completion and resumption rules. Its immutable, checksum-checked event histories and browser migrations are new browser code. Browser receipts are user assertions; integrity checks don't independently verify that work occurred. No private commitments or return notes were imported.
+
+`public/core/readable.js` preserves the native parser function bodies, with only its module header and CommonJS export adapted. The browser DOM adapter in `public/reading.js` is new code. It builds text and a small set of semantic elements, never evaluates source HTML, never fetches images, and only enables explicit HTTP(S) links without embedded credentials. Supported formatting is a bounded Markdown subset, not full CommonMark. A heading already shown as the post title is not duplicated in the body; originals, source ranges, downloads and hashes remain unchanged.

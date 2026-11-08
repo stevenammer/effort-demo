@@ -92,7 +92,7 @@ try {
     await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
     await page.locator('#span-entries').getByRole('button', { name: 'Open thread · 0 replies', exact: true }).click();
     const beforeReply = await page.locator('#now-title').textContent();
-    await page.locator('#thread-post summary').click();
+    await page.locator('#thread-post .original-disclosure summary').click();
     const [sourceDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download original text', exact: true }).click()]);
     assert.equal(await readFile(await sourceDownload.path(), 'utf8'), post);
     await page.locator('#reply-text').fill('  Try the exercise before the slides.  '); await page.reload();
@@ -157,6 +157,34 @@ try {
     await page.getByText('Restore verified. 0 missing captures added; existing originals kept.', { exact: true }).waitFor();
     await page.locator('[data-view="home"]').click(); assert.equal(await page.locator('#now-title').innerText(), 'Nothing chosen. Room to think.');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    // Render the existing native reading vocabulary without touching source bytes or fetching resources.
+    const cleanReport = '# Workshop report\n\nUse **clear examples** and keep snake_case_value.\n\n## Outline\n\n- First point\n  - Nested point\n\n4294967296. Keep the large number.\n\n| Topic | Detail |\n| --- | --- |\n| Opening | A deliberately long column for a small phone screen |\n\n~~~js\nconst examples = 2;\n~~~\n\n[Reference](https://example.com/reference)';
+    const openReport = async text => {
+      await page.locator('#capture-open').click(); await page.locator('#capture-text').fill(text); await page.locator('#capture-span').selectOption('Learning'); await page.locator('#save-capture').click(); await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
+      await page.locator('[data-view="spans"]').first().click(); await page.locator('#span-list').getByRole('link', { name: 'Learning', exact: true }).click();
+      await page.locator('#span-entries .journal-post').filter({ hasText: 'Workshop report' }).first().getByRole('button', { name: 'Open thread · 0 replies', exact: true }).click();
+      await page.locator('#thread-post h1').getByText('Workshop report', { exact: true }).waitFor();
+    };
+    await openReport(cleanReport); await page.screenshot({ path: `${output}/reading-${name}.png`, fullPage: true });
+    const report = cleanReport + '\n[Unsafe](javascript:alert(1))\n<img src=x onerror="window.injected=true">';
+    await openReport(report);
+    assert.equal(await page.locator('#thread-post h1').innerText(), 'Workshop report');
+    assert.equal(await page.locator('#thread-post>.rich-reading strong').innerText(), 'clear examples');
+    assert.equal(await page.locator('#thread-post>.rich-reading ul ul li').innerText(), 'Nested point');
+    assert.equal(await page.locator('#thread-post>.rich-reading .literal-list-marker').innerText(), '4294967296. Keep the large number.');
+    assert.equal(await page.locator('#thread-post>.rich-reading table th').count(), 2);
+    assert.equal(await page.locator('#thread-post>.rich-reading img, #thread-post>.rich-reading script, #thread-post>.rich-reading iframe').count(), 0);
+    assert.equal(await page.locator('#thread-post>.rich-reading a').count(), 1);
+    const reference = page.locator('#thread-post>.rich-reading a'); assert.equal(await reference.getAttribute('href'), 'https://example.com/reference'); assert.equal(await reference.getAttribute('rel'), 'noopener noreferrer');
+    assert.equal(await page.evaluate(() => window.injected), undefined);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.locator('#thread-post .original-disclosure summary').click(); assert.equal(await page.locator('#thread-post .original-disclosure pre').innerText(), report);
+    const [reportDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download original text', exact: true }).click()]); assert.equal(await readFile(await reportDownload.path(), 'utf8'), report);
+    await page.reload(); await page.locator('#thread-post>.rich-reading h3').waitFor();
+    await page.locator('#thread-post .original-disclosure summary').click(); assert.equal(await page.locator('#thread-post .original-disclosure pre').innerText(), report);
+    const deepReport = '# Workshop report\n\n' + Array.from({ length: 25 }, (_, i) => ' '.repeat(i * 2) + '- Nested example ' + i).join('\n');
+    await openReport(deepReport); assert.equal(await page.locator('#thread-post>.rich-reading li').count(), 25);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await context.close();
   }
   // Exercise an actual pre-upgrade visitor profile, including a damaged original.
@@ -197,5 +225,5 @@ try {
   assert.deepEqual(upgraded.captures, [prior]); assert.deepEqual(upgraded.now, priorChoice); assert.equal(upgraded.intentEvents.length, 1); assert.equal(upgraded.intentEvents[0].state, 'ACTIVE');
   await oldDatabase.close();
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. Custom spans, nested replies, source links, permalinks, search and threaded backup restore also passed. Hold/resume, self-reported completion receipts, retained commitments and non-resurrecting restore also passed. No page errors or external requests.');
+  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. Custom spans, nested replies, source links, permalinks, search and threaded backup restore also passed. Hold/resume, self-reported completion receipts, retained commitments and non-resurrecting restore also passed. Native rich reading, exact originals, safe links and phone table containment also passed. No page errors or external requests.');
 } finally { await browser.close(); if (server) await new Promise(done => server.close(done)); }

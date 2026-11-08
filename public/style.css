@@ -829,3 +829,28 @@ textarea {
 #span-depth { margin-bottom:2rem; }
 #span-depth:empty { display:none; }
 #span-depth>h2 { font-size:1.8rem; }
+.rich-reading { min-width:0; overflow-wrap:anywhere; font-size:.92rem; }
+.rich-reading>p { white-space:pre-wrap; margin:0 0 1rem; }
+.rich-reading h2,.rich-reading h3,.rich-reading h4,.rich-reading h5,.rich-reading h6 { font-family:inherit; font-size:1.1rem; font-weight:550; line-height:1.5; margin:1.5rem 0 .7rem; letter-spacing:0; }
+.rich-reading h2 { font-size:1.35rem; }
+.rich-reading li { white-space:pre-wrap; padding-left:.2rem; margin:.3rem 0; }
+.rich-reading ul,.rich-reading ol { padding-left:1.5rem; }
+.rich-reading li>ul,.rich-reading li>ol { margin:.35rem 0; }
+.rich-reading blockquote { border-left:2px solid var(--violet); padding:.4rem 1rem; margin:1rem 0; white-space:pre-wrap; }
+.rich-reading pre { overflow:auto; white-space:pre; padding:1rem; background:var(--bg); border:1px solid var(--line); border-radius:8px; max-width:100%; }
+.rich-reading code { font: .82em/1.7 ui-monospace,monospace; background:#ffffff06; padding:.1em .25em; border-radius:3px; }
+.rich-reading pre code { background:none; padding:0; }
+.rich-reading hr { border:0; border-top:1px solid var(--line); margin:1.5rem 0; }
+.reading-table { max-width:100%; overflow:auto; margin:1rem 0; }
+.reading-table table { border-collapse:collapse; min-width:100%; font-size:.82rem; }
+.reading-table th,.reading-table td { border:1px solid var(--line); padding:.7rem; min-width:130px; max-width:300px; vertical-align:top; text-align:left; }
+.reading-table th { background:var(--card); }
+.reading-table:focus-visible { outline:2px solid var(--violet); outline-offset:3px; }
+.organized-disclosure { margin:1rem 0; color:var(--muted); }
+.fragment .rich-reading { font-size:.87rem; }
+
+.rich-reading li.literal-list-marker { list-style:none; }
+
+/* Keep semantic nesting while limiting visual indentation on narrow screens. */
+.rich-reading :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-left:0; list-style-position:inside; }
+.rich-reading :is(ul,ol) :is(ul,ol) :is(ul,ol) li { padding-left:0; }

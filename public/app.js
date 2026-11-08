@@ -1,3 +1,4 @@
+import { renderReading, readablePreview } from './reading.js';
 import { deriveCommitments } from './intent.js';
 import { organizeText, titleOf } from './core/ef.js';
 import { createStore, KEY, LIMITS } from './store.js';
@@ -5,6 +6,11 @@ import { spanKey, parentOf, threadRoot } from './spans.js';
 
 const $ = id => document.getElementById(id);
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+const displayTitle = (text, max = 90) => {
+  const firstLine = text.split(/\r?\n/, 1)[0];
+  if (/^#{1,6}\s/.test(firstLine)) { const title = readablePreview(firstLine, 4000); return title.length > max ? title.slice(0, max - 1) + '…' : title; }
+  return titleOf(readablePreview(text, Math.max(max * 3, 360)), max) || 'Untitled thought';
+};
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let draftTimer, draftDirty = false;
@@ -32,13 +38,13 @@ const openSpan = id => showView(`span/${encodeURIComponent(id)}`);
 function entryCard(capture) {
   const card = element('article', undefined, 'entry-card');
   card.append(element('span', `${capture.span}${capture.sample ? ' · FICTIONAL EXAMPLE' : ' · DEMO CAPTURE'}`, 'eyebrow'));
-  card.append(element('h3', titleOf(capture.text, 90)));
+  card.append(element('h3', displayTitle(capture.text, 90)));
   card.append(element('p', `${formatDate(capture.createdAt)} · Original verified`));
   const open = element('button', 'Open the thought ↗', 'entry-open'); open.onclick = () => openSource(capture.id, false); card.append(open); return card;
 }
 function render() {
   const now = state.now;
-  $('now-title').textContent = now?.quote ?? 'Nothing chosen. Room to think.';
+  $('now-title').textContent = now ? readablePreview(now.quote, 4000) : 'Nothing chosen. Room to think.';
   $('now-origin').textContent = now ? now.origin === 'sample' ? 'Sample choice' : 'Chosen here' : 'No next step';
   $('now-reason').textContent = now ? 'One chosen detail. Capturing or exploring something else leaves it here.' : 'Capture freely. A thought only becomes your next step when you choose it.';
   $('now-done').hidden = $('now-original').hidden = $('hold-open').hidden = !now;
@@ -74,7 +80,7 @@ function renderSpans() {
     card.append(element('span', s.kind === 'journal' ? 'ATTENTION SPAN' : s.kind.toUpperCase(), 'eyebrow'), element('h2'));
     card.querySelector('h2').append(link); card.append(element('p', descriptions[s.kind], 'small'));
     card.append(element('p', `${posts.length} post${posts.length === 1 ? '' : 's'} · ${all.length - posts.length} repl${all.length - posts.length === 1 ? 'y' : 'ies'}${latest ? ` · ${formatDate(latest.createdAt)}` : ' · Ready when you are'}`, 'small'));
-    if (latest) card.append(element('p', titleOf(latest.text, 110), 'span-preview'));
+    if (latest) card.append(element('p', displayTitle(latest.text, 110), 'span-preview'));
     return card;
   }));
   if (!directory.length) $('span-list').append(element('p', 'No Attention Spans match. Try another name or a phrase from a post.', 'empty'));
@@ -87,7 +93,7 @@ function renderSpans() {
   $('span-entries').replaceChildren(...posts.map(capture => {
     const group = element('article', undefined, 'journal-post'); const heading = element('div', undefined, 'entry-heading');
     heading.append(element('span', `${formatDate(capture.createdAt)} · ${capture.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'));
-    group.append(heading, element('h2', titleOf(capture.text, 90)), element('p', capture.text.slice(0, 360) + (capture.text.length > 360 ? '…' : ''), 'post-excerpt'));
+    group.append(heading, element('h2', displayTitle(capture.text, 90)), element('p', readablePreview(capture.text, 360), 'post-excerpt'));
     const replyCount = counts.get(capture.id) ?? 0;
     const actions = element('div', undefined, 'post-actions'); const open = element('button', `Open thread · ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}`, 'text-button'); open.onclick = () => openThread(capture.id);
     const original = element('button', 'See original ↗', 'text-button'); original.onclick = () => openSource(capture.id, true);
@@ -103,11 +109,12 @@ function renderThread() {
   if (!root) { $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = true; return; }
   $('reply-form').hidden = false; $('thread-permalink').href = `#thread/${root.id}`;
   $('back-feed').onclick = () => openSpan(spanKey(root.span));
-  main.append(element('span', `${root.span} · ${formatDate(root.createdAt)} · ${root.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'), element('h1', titleOf(root.text, 110)));
+  main.append(element('span', `${root.span} · ${formatDate(root.createdAt)} · ${root.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'), element('h1', displayTitle(root.text, 110)));
   if (parentOf(root)) main.append(element('p', 'The parent original needs recovery. This reply and its own replies are preserved here.', 'notice'));
   const display = element('details', undefined, 'original-disclosure'); display.append(element('summary', 'Read the exact original'), element('pre', root.text, 'raw'), element('p', `Original verified · SHA-256 ${root.hash}`, 'small'));
   const download = element('button', 'Download original text', 'text-button'); download.onclick = () => downloadText(root.text, `effort-original-${root.id}.txt`, 'text/plain'); display.append(download);
-  main.append(organized(root, false), display);
+  main.append(renderReading(root.text, { titleAlreadyShown: displayTitle(root.text, 110) }), display);
+  const grouping = element('details', undefined, 'organized-disclosure'); grouping.append(element('summary', 'See organized details'), organized(root, false)); main.append(grouping);
   const actions = element('div', undefined, 'post-actions');
   const choose = element('button', 'Choose a next step…', 'quiet'); choose.onclick = () => openSource(root.id, false);
   const reply = element('button', 'Reply', 'quiet'); reply.onclick = () => targetReply(root.id);
@@ -121,7 +128,7 @@ function renderThread() {
   $('replies-heading').textContent = `${rows.length} repl${rows.length === 1 ? 'y' : 'ies'}`;
   $('thread-replies').replaceChildren(...rows.map(({ capture, depth }) => {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
-    card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), element('p', capture.text, 'reply-body'));
+    card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
     const actions = element('div', undefined, 'post-actions'); const button = element('button', 'Reply to this', 'text-button'); button.onclick = () => targetReply(capture.id);
     const source = element('button', 'Original ↗', 'text-button'); source.onclick = () => openSource(capture.id, true);
     const permalink = element('a', 'Permalink', 'small'); permalink.href = `#thread/${capture.id}`;
@@ -129,7 +136,7 @@ function renderThread() {
   }));
   if (!rows.length) $('thread-replies').append(element('p', 'Room for the next thought. Replies will stay attached to this post.', 'muted'));
   if (!replyTarget || !state.captures.some(c => c.id === replyTarget)) replyTarget = root.id;
-  $('reply-target').textContent = `Replying to: ${titleOf(state.captures.find(c => c.id === replyTarget).text, 100)}`;
+  $('reply-target').textContent = `Replying to: ${displayTitle(state.captures.find(c => c.id === replyTarget).text, 100)}`;
   $('reply-to-root').onclick = () => targetReply(root.id);
 }
 function targetReply(id) { persistReplyDraft(); replyTarget = id; replyDraftDirty = true; persistReplyDraft(); renderThread(); $('reply-text').focus(); $('reply-form').scrollIntoView({ block: 'center', behavior: 'auto' }); }
@@ -140,7 +147,7 @@ function organized(capture, choices = true) {
     const list = element('div', undefined, 'fragments');
     for (const item of section.items) {
       const row = element('div', undefined, 'fragment'); const words = element('div');
-      words.append(element('span', label[item.type] ?? 'Unsorted', 'badge'), element('blockquote', item.quote), element('p', 'Exact source quote. The category is a rule-based suggestion.', 'small'));
+      words.append(element('span', label[item.type] ?? 'Unsorted', 'badge'), renderReading(item.quote, { headingBase: 4 }), element('p', 'Rendered from an exact source range. The category is a rule-based suggestion.', 'small'));
       const choose = element('button', 'Make this my next step', 'quiet');
       choose.onclick = async () => {
         choose.disabled = true;
@@ -257,7 +264,7 @@ function openHold() {
   holdExpected = structuredClone(state.now); holdRoute = routeFromHash();
   holdContext = { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false };
   const thought = threadId && state.captures.find(c => c.id === threadId);
-  $('hold-summary').value = thought ? titleOf(thought.text, 300) : state.now?.quote ?? '';
+  $('hold-summary').value = thought ? displayTitle(thought.text, 300) : state.now?.quote ?? '';
   $('hold-next').value = ''; $('hold-error').textContent = ''; $('hold-dialog').showModal(); $('hold-summary').focus();
 }
 $('hold-open').onclick = openHold;
@@ -284,7 +291,7 @@ function renderSpanDepth(span) {
     const completed = commitments().filter(c => c.receipt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     for (const item of completed) {
       const card = element('article', undefined, 'panel proof-receipt');
-      card.append(element('span', 'COMPLETE · SELF-REPORTED', 'eyebrow'), element('h3', item.choice.quote), element('p', item.receipt.note, 'reply-body'), element('p', formatDate(item.receipt.at), 'small'), sourceButton(item.choice));
+      card.append(element('span', 'COMPLETE · SELF-REPORTED', 'eyebrow'), element('h3', item.choice.quote), renderReading(item.receipt.note, { headingBase: 3 }), element('p', formatDate(item.receipt.at), 'small'), sourceButton(item.choice));
       if (state.captures.find(c => c.id === item.choice.captureId)?.sample) card.append(element('p', 'Fictional example source.', 'small'));
       body.append(card);
     }

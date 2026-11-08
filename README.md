@@ -35,6 +35,8 @@ Open `http://127.0.0.1:4174/public/`. A static host can serve the same files; th
 
 ## What comes from the actual app
 
+`public/core/readable.js` turns the original into display-only headings, paragraphs, nested lists, code, quotes and tables. Browser reading never evaluates source HTML or fetches remote images. Links require a tap, and unsafe schemes stay inert. The exact original remains available separately.
+
 `public/core/semantic.js` classifies source fragments with conservative rules. `public/core/ef.js` groups them into a reversible view. Quotes retain exact source ranges. Private role aliases were replaced with generic roles for this extract. [SOURCE.md](SOURCE.md) records the source revision, adaptations and boundaries.
 
 The browser interface, local storage and browser backup format are demonstration code. The Android app uses a different native storage and backup implementation. Browser-demo backups cannot be imported into the phone app.
