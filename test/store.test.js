@@ -93,7 +93,7 @@ test('tampering, wrong source links and duplicate IDs fail before writing',async
 });
 test('conflicting IDs cannot overwrite an existing original or partially restore',async()=>{
   const {store}=setup();await store.seed();const before=await store.exportData(),bundle=JSON.parse(before);
-  bundle.payload.captures[1].text='Different verified text.';bundle.payload.captures[1].hash=await sha256(bundle.payload.captures[1].text);bundle.payload.now=null;
+  const changed=bundle.payload.captures.find(c=>c.id!==bundle.payload.now.captureId);changed.text='Different verified text.';changed.hash=await sha256(changed.text);bundle.payload.now=null;
   bundle.sha256=await sha256(JSON.stringify(bundle.payload));await assert.rejects(store.restore(JSON.stringify(bundle)),/same ID differs/);assert.equal(await store.exportData(),before);await store.close();
 });
 test('explicit clear keeps unrelated browser storage and cannot remigrate erased data',async()=>{

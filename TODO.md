@@ -12,3 +12,5 @@ Outcome: bring the public EFFORT experience up to the real app's working model a
 - [ ] Release evidence: relevant full suites, fault and concurrency acceptance, fresh-clone checks, hosted checks and private-data review.
 
 Private Android app/data and existing personal writing remain separate. Preserve existing public visitor data when upgrading. Keep this objective intact across implementation slices; green narrow tests are not completion evidence for the whole product.
+
+The current continuity slice implements explicit commitment histories, self-reported receipts, drop reasons and saved return context. Exploration, durable isolated drafts for all composers, attachments, offline reopening, scale and honest assistance remain part of the full goal.

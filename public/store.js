@@ -1,3 +1,5 @@
+import { createContinuity } from './continuity-store.js';
+import { INTENT_TABLES, seal } from './intent.js';
 import { makeSpan, initialSpans, spanKey, validSpan, validSpanName } from './spans.js';
 import { openDatabase, request, TABLES } from './database.js';
 import { KEY, LIMITS, SPANS, blank, clone, same, exactKeys, textAllowed, sha256, validChoice,
@@ -23,7 +25,7 @@ export function createStore(options = {}) {
   function notify() { notifyListeners(); try { channel?.postMessage({ changed: true }); } catch {} }
   if (channel) channel.onmessage = event => { if (event.data?.changed === true) notifyListeners(); };
   let initialized;
-  function ready() { return initialized ??= migrate().then(ensureSpans).catch(error => { initialized = null; throw error; }); }
+  function ready() { return initialized ??= migrate().then(ensureSpans).then(continuity.migrate).catch(error => { initialized = null; throw error; }); }
   async function migrate() {
     if (!globalThis.crypto?.subtle) throw Error('This browser cannot verify originals. Keep the draft and open the HTTPS version.');
     if (await db.run(['meta'], 'readonly', tx => meta(tx, 'legacyChecked'))) return;
@@ -151,12 +153,12 @@ export function createStore(options = {}) {
     });
   }
   async function read() {
-    await recover(); await ensureSpans();
-    return db.run(['captures', 'meta', 'quarantine', 'spans'], 'readonly', async tx => {
+    await recover(); await ensureSpans(); await continuity.repair();
+    return db.run(['captures', 'meta', 'quarantine', 'spans', ...INTENT_TABLES], 'readonly', async tx => {
       const captures = await request(tx.objectStore('captures').getAll());
       captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null,
-        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()) };
+        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()) };
     });
   }
   async function health() {
@@ -192,26 +194,6 @@ export function createStore(options = {}) {
     if (!same(actual, record)) throw Error('The save could not be read back exactly. Your draft is still here.');
     notify(); return clone(actual);
   }
-  async function choose(captureId, start, end) {
-    await ready();
-    const source = await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(captureId)));
-    await validateCapture(source);
-    const choice = { captureId, start, end, quote: source.text.slice(start, end), origin: 'chosen' };
-    if (!validChoice(choice, [source])) throw Error('Choose an exact detail from a saved original.');
-    await db.run(['captures', 'meta'], 'readwrite', async tx => {
-      if (!same(await request(tx.objectStore('captures').get(captureId)), source)) throw Error('The original changed while you were choosing. Reopen it first.');
-      await setMeta(tx, 'now', choice); await setMeta(tx, 'heldNow', false);
-    });
-    notify(); return read();
-  }
-  async function complete(expected) {
-    await ready();
-    await db.run(['meta'], 'readwrite', async tx => {
-      if (expected !== undefined && !same(await meta(tx, 'now'), expected)) throw Error('The next step changed in another tab. Reopen it before marking it done.');
-      await setMeta(tx, 'now', null); await setMeta(tx, 'heldNow', false);
-    });
-    notify(); return read();
-  }
   async function replace(state) {
     await ready(); state = await validateState(state); const epoch = crypto.randomUUID();
     await db.run(TABLES, 'readwrite', async tx => {
@@ -219,6 +201,8 @@ export function createStore(options = {}) {
       for (const capture of state.captures) await request(tx.objectStore('captures').put(capture));
       for (const record of state.recovery) await request(tx.objectStore('quarantine').put(record));
       for (const span of state.spans) await request(tx.objectStore('spans').put(span));
+      for (const table of INTENT_TABLES) for (const row of state[table]) await request(tx.objectStore(table).put(row));
+      await setMeta(tx, 'intentInitialized', true);
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false); await setMeta(tx, 'epoch', epoch);
       await setMeta(tx, 'initialized', true); await setMeta(tx, 'legacyChecked', true);
     });
@@ -240,9 +224,11 @@ export function createStore(options = {}) {
     if (!exactKeys(bundle, ['payload', 'sha256']) || !validHash(bundle.sha256) || await sha256(JSON.stringify(bundle.payload)) !== bundle.sha256) {
       throw Error('Backup checksum mismatch. Nothing was changed.');
     }
-    const incoming = await validateState(bundle.payload); await ready(); await recover();
-    const added = await db.run(['captures', 'meta', 'quarantine', 'spans'], 'readwrite', async tx => {
+    let incoming = await validateState(bundle.payload); const continuityPlan = await continuity.prepareRestore(incoming, { legacy: bundle.payload.version < 4 }); incoming = continuityPlan.incoming;
+    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', ...INTENT_TABLES], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset during restore. Reopen the backup before trying again.');
+      for (const table of INTENT_TABLES) if (!same(await request(tx.objectStore(table).getAll()), continuityPlan.saved[table])) throw Error('Work changed during restore. Reopen the backup before trying again.');
+      if (!same(await meta(tx, 'now') ?? null, continuityPlan.saved.now)) throw Error('NOW changed during restore. Reopen the backup before trying again.');
       const captures = tx.objectStore('captures'); const existing = await request(captures.getAll()); const missing = [];
       for (const capture of incoming.captures) {
         const previous = existing.find(c => c.id === capture.id);
@@ -250,16 +236,21 @@ export function createStore(options = {}) {
         if (!previous) missing.push(capture);
       }
       ensureCapacity(existing, missing);
+      for (const table of INTENT_TABLES) for (const row of incoming[table]) {
+        const previous = await request(tx.objectStore(table).get(row.id));
+        if (previous && !same(previous, row)) throw Error('A continuity record with the same ID differs. Nothing was changed.');
+        if (!previous) await request(tx.objectStore(table).add(row));
+      }
+      for (const event of continuityPlan.additional) await request(tx.objectStore('intentEvents').add(event));
       const directory = tx.objectStore('spans'), oldSpans = await request(directory.getAll());
       const missingSpans = incoming.spans.filter(span => !oldSpans.some(previous => previous.id === span.id));
       if (oldSpans.length + missingSpans.length > 100) throw Error('Restore would exceed 100 Attention Spans. Nothing was changed.');
       for (const span of missingSpans) await request(directory.add(span));
       for (const capture of missing) await request(captures.add(capture));
       for (const record of incoming.recovery) if (!await request(tx.objectStore('quarantine').get(record.id))) await request(tx.objectStore('quarantine').put(record));
-      if (!await meta(tx, 'now')) {
-        if (incoming.now !== null) { await setMeta(tx, 'now', incoming.now); await setMeta(tx, 'heldNow', false); }
-        else if (incoming.recovery.some(r => r.source === 'now')) await setMeta(tx, 'heldNow', true);
-      }
+      await setMeta(tx, 'now', continuityPlan.now);
+      if (continuityPlan.now) await setMeta(tx, 'heldNow', false);
+      else if (incoming.recovery.some(r => r.source === 'now')) await setMeta(tx, 'heldNow', true);
       await setMeta(tx, 'initialized', true); return missing.length;
     });
     notify(); return added;
@@ -272,15 +263,18 @@ export function createStore(options = {}) {
     for (const [span, text] of samples) state.captures.push({ id: crypto.randomUUID(), text, hash: await sha256(text), createdAt: new Date().toISOString(), span, sample: true });
     const quote = "I'll review the workshop outline before lunch.";
     state.now = { captureId: state.captures[0].id, start: 0, end: quote.length, quote, origin: 'sample' };
+    const id = crypto.randomUUID(); state.intentEvents = [await seal({ id, commitmentId: id, previousId: null, state: 'ACTIVE', choice: state.now, at: new Date().toISOString(), note: 'Fictional walkthrough choice.', receipt: null })];
     if (force) return replace(state);
-    await db.run(['captures', 'meta'], 'readwrite', async tx => {
+    await db.run(['captures', 'meta', 'intentEvents'], 'readwrite', async tx => {
       if (await meta(tx, 'initialized')) return;
       for (const capture of state.captures) await request(tx.objectStore('captures').add(capture));
+      for (const event of state.intentEvents) await request(tx.objectStore('intentEvents').add(event));
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'initialized', true);
     });
     notify(); return read();
   }
   async function close() { channel?.close(); listeners.clear(); await db.close(); }
-  return { read, capture, createSpan, choose, complete, reset, exportData, restore, seed, health, close,
+  const continuity = createContinuity({ db, ready, prepare: recover, notify, read, recoveryRecord });
+  return { ...continuity, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

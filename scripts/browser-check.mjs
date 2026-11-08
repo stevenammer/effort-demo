@@ -72,7 +72,7 @@ try {
     await page.locator('#capture-open').click(); assert.equal(await page.locator('#capture-text').inputValue(), 'Keep this failed-save draft.');
     await page.locator('#save-capture').click(); await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
     // A second real tab must see updates without reload and must not overwrite the first.
-    const second = await context.newPage(); await second.goto(base + '/public/');
+    const second = await context.newPage(); second.on('pageerror', e => errors.push(e.message)); await second.goto(base + '/public/');
     await second.locator('#capture-open').click(); await second.locator('#capture-text').fill('A thought from the second tab.'); await second.locator('#save-capture').click();
     await second.locator('#capture-dialog').waitFor({ state: 'hidden' });
     await page.locator('#storage-count').getByText('4 saved originals', { exact: true }).waitFor();
@@ -125,10 +125,43 @@ try {
     await page.locator('#span-list').getByRole('link', { name: 'Workshop planning', exact: true }).click();
     await page.locator('#span-entries').getByRole('button', { name: 'Open thread · 2 replies', exact: true }).click();
     await page.locator('.thread-reply.depth-1').waitFor();
+    // Hold context, deliberately change NOW, return, and retain a human completion receipt.
+    await page.locator('[data-view="home"]').click(); const heldChoice = await page.locator('#now-title').innerText();
+    await page.locator('#hold-open').click(); await page.locator('#hold-summary').fill('The opening example is drafted.'); await page.locator('#hold-next').fill('Read the second paragraph.'); await page.locator('#save-place').click();
+    await page.locator('#hold-dialog').waitFor({ state: 'hidden' }); await page.locator('#return-card').waitFor();
+    assert.equal(await page.locator('#now-title').innerText(), heldChoice);
+    await page.locator('#capture-open').click(); const different = "I'll review a different fictional note.";
+    await page.locator('#capture-text').fill(different); await page.locator('#capture-span').selectOption('Unsorted'); await page.locator('#save-capture').click(); await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
+    await page.locator('#recent .entry-card').first().getByRole('button').click();
+    await page.locator('#source-body .fragment').filter({ hasText: different }).getByRole('button').click();
+    await page.locator('#now-title').getByText(different, { exact: true }).waitFor(); await page.reload();
+    await page.locator('#return-card').waitFor(); await page.locator('#resume-place').click();
+    await page.locator('#now-title').getByText(heldChoice, { exact: true }).waitFor();
+    await page.getByText('Your place is restored. Return note: Read the second paragraph.', { exact: true }).waitFor();
+    await page.locator('#now-done').click(); await page.getByText('Done. Your self-reported receipt is in Proof.', { exact: true }).waitFor();
+    assert.equal(await page.locator('#now-title').innerText(), 'Nothing chosen. Room to think.');
+    await page.locator('[data-view="spans"]').first().click(); await page.locator('#span-list').getByRole('link', { name: 'Proof', exact: true }).click();
+    await page.locator('.proof-receipt').waitFor(); assert.equal(await page.locator('.proof-receipt h3').innerText(), heldChoice);
+    await page.screenshot({ path: `${output}/proof-${name}.png`, fullPage: true });
+    await page.locator('[data-view="engine"]').click();
+    const [intentDownload] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]); const intentBackup = await readFile(await intentDownload.path(), 'utf8');
+    const savedIntent = JSON.parse(intentBackup).payload; assert.equal(savedIntent.intentEvents.filter(e => e.state === 'COMPLETE').length, 1); assert.equal(savedIntent.resumptions[0].kind, 'resumed');
+    await page.locator('[data-view="spans"]').first().click(); await page.locator('#span-list').getByRole('link', { name: 'Workspace', exact: true }).click();
+    const work = page.locator('.commitment-card').filter({ hasText: different }); await work.getByRole('button', { name: 'Make this NOW', exact: true }).click();
+    await page.locator('#now-title').getByText(different, { exact: true }).waitFor();
+    await page.locator('[data-view="spans"]').first().click(); await page.locator('#span-list').getByRole('link', { name: 'Workspace', exact: true }).click();
+    await page.locator('.commitment-card').filter({ hasText: different }).getByRole('button', { name: 'Drop commitment…', exact: true }).click();
+    await page.locator('#drop-note').fill('Changed priorities. Keep the original thought.'); await page.locator('#save-drop').click(); await page.locator('#drop-dialog').waitFor({ state: 'hidden' });
+    await page.getByText('Commitment dropped. Its reason and original are kept. Nothing else was chosen.', { exact: true }).waitFor();
+    await page.locator('[data-view="engine"]').click(); await upload(intentBackup);
+    await page.getByText('Restore verified. 0 missing captures added; existing originals kept.', { exact: true }).waitFor();
+    await page.locator('[data-view="home"]').click(); assert.equal(await page.locator('#now-title').innerText(), 'Nothing chosen. Room to think.');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await context.close();
   }
   // Exercise an actual pre-upgrade visitor profile, including a damaged original.
   const migration = await browser.newContext();
+  await migration.route('**/*', route => { if (!route.request().url().startsWith(base + '/')) { outside.push(route.request().url()); return route.abort(); } return route.continue(); });
   await migration.addInitScript(({ hash }) => {
     if (sessionStorage.getItem('migration-fixture')) return;
     const text = '  A pre-upgrade thought.\nKeep the spacing.  ';
@@ -137,7 +170,7 @@ try {
     const raw = JSON.stringify({ version: 1, kind: 'effort-browser-demo', captures: [good, bad], now: null });
     localStorage.setItem('effort-public-demo-v1', raw); sessionStorage.setItem('original-fixture', raw); sessionStorage.setItem('migration-fixture', '1');
   }, { hash: createHash('sha256').update('  A pre-upgrade thought.\nKeep the spacing.  ').digest('hex') });
-  const legacyPage = await migration.newPage(); await legacyPage.goto(base + '/public/');
+  const legacyPage = await migration.newPage(); legacyPage.on('pageerror', e => errors.push(e.message)); await legacyPage.goto(base + '/public/');
   await legacyPage.locator('[data-view="engine"]').click();
   await legacyPage.locator('#storage-count').getByText('1 saved original', { exact: true }).waitFor();
   assert.equal(await legacyPage.evaluate(() => localStorage.getItem('effort-public-demo-v1') === sessionStorage.getItem('original-fixture')), true);
@@ -145,6 +178,24 @@ try {
   await legacyPage.locator('#capture-dialog').waitFor({ state: 'hidden' }); await legacyPage.reload();
   await legacyPage.locator('#storage-count').getByText('2 saved originals', { exact: true }).waitFor();
   await migration.close();
+  // Upgrade an actual browser database from the previous release without rewriting its original.
+  const oldDatabase = await browser.newContext({ acceptDownloads: true });
+  await oldDatabase.route('**/*', route => { if (!route.request().url().startsWith(base + '/')) { outside.push(route.request().url()); return route.abort(); } return route.continue(); });
+  const oldPage = await oldDatabase.newPage(); oldPage.on('pageerror', e => errors.push(e.message));
+  await oldPage.goto(base + '/public/favicon.svg');
+  const priorText = 'An existing explicitly chosen step.', priorId = '33333333-3333-4333-8333-333333333333';
+  const prior = { id: priorId, text: priorText, hash: createHash('sha256').update(priorText).digest('hex'), createdAt: '2026-01-01T00:00:00.000Z', span: 'Learning', sample: false };
+  const priorChoice = { captureId: priorId, start: 0, end: priorText.length, quote: priorText, origin: 'chosen' };
+  await oldPage.evaluate(async ({ prior, priorChoice }) => {
+    const db = await new Promise((resolve, reject) => { const req = indexedDB.open('effort-public-demo', 2); req.onupgradeneeded = () => { for (const table of ['captures', 'meta', 'quarantine', 'drafts', 'spans']) req.result.createObjectStore(table, { keyPath: ['meta', 'drafts'].includes(table) ? 'key' : 'id' }); }; req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
+    await new Promise((resolve, reject) => { const tx = db.transaction(['captures', 'meta'], 'readwrite'); tx.objectStore('captures').put(prior); for (const [key, value] of [['initialized', true], ['legacyChecked', true], ['now', priorChoice]]) tx.objectStore('meta').put({ key, value }); tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); }); db.close();
+  }, { prior, priorChoice });
+  await oldPage.goto(base + '/public/'); await oldPage.locator('#now-title').getByText(priorText, { exact: true }).waitFor();
+  await oldPage.locator('[data-view="engine"]').click();
+  const [upgradeDownload] = await Promise.all([oldPage.waitForEvent('download'), oldPage.locator('#download').click()]);
+  const upgraded = JSON.parse(await readFile(await upgradeDownload.path(), 'utf8')).payload;
+  assert.deepEqual(upgraded.captures, [prior]); assert.deepEqual(upgraded.now, priorChoice); assert.equal(upgraded.intentEvents.length, 1); assert.equal(upgraded.intentEvents[0].state, 'ACTIVE');
+  await oldDatabase.close();
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. Custom spans, nested replies, source links, permalinks, search and threaded backup restore also passed. No page errors or external requests.');
+  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. Custom spans, nested replies, source links, permalinks, search and threaded backup restore also passed. Hold/resume, self-reported completion receipts, retained commitments and non-resurrecting restore also passed. No page errors or external requests.');
 } finally { await browser.close(); if (server) await new Promise(done => server.close(done)); }

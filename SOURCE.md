@@ -15,3 +15,5 @@ The browser interface, named Attention Span directory, nested post/reply adapter
 The original app's current offline baseline passed 41 suites and 393 tests on November 7, 2026. That is a source-level result. It doesn't establish the installed phone version. Demo test results are reported separately.
 
 Implementation is AI-assisted. Steven Ammer defines the product requirements and makes the product decisions. This demonstration uses fabricated sample content and doesn't show employer, customer or family records.
+
+The browser continuity adapter follows the existing app's explicit promotion, one-NOW, self-reported completion and resumption rules. Its immutable, checksum-checked event histories and browser migrations are new browser code. Browser receipts are user assertions; integrity checks don't independently verify that work occurred. No private commitments or return notes were imported.

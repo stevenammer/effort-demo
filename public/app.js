@@ -1,3 +1,4 @@
+import { deriveCommitments } from './intent.js';
 import { organizeText, titleOf } from './core/ef.js';
 import { createStore, KEY, LIMITS } from './store.js';
 import { spanKey, parentOf, threadRoot } from './spans.js';
@@ -5,7 +6,7 @@ import { spanKey, parentOf, threadRoot } from './spans.js';
 const $ = id => document.getElementById(id);
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
-let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, refreshing = Promise.resolve();
+let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let draftTimer, draftDirty = false;
 const DRAFT = `${KEY}-draft`;
 function notice(text, error = false) { $('notice').textContent = text; $('notice').classList.toggle('error', error); $('notice').hidden = false; }
@@ -40,7 +41,8 @@ function render() {
   $('now-title').textContent = now?.quote ?? 'Nothing chosen. Room to think.';
   $('now-origin').textContent = now ? now.origin === 'sample' ? 'Sample choice' : 'Chosen here' : 'No next step';
   $('now-reason').textContent = now ? 'One chosen detail. Capturing or exploring something else leaves it here.' : 'Capture freely. A thought only becomes your next step when you choose it.';
-  $('now-done').hidden = $('now-original').hidden = !now;
+  $('now-done').hidden = $('now-original').hidden = $('hold-open').hidden = !now;
+  renderReturnPoint();
   $('recent').replaceChildren(...state.captures.filter(c => !parentOf(c)).slice(-2).reverse().map(entryCard));
   if (!state.captures.length) $('recent').append(element('p', 'Nothing here yet. Capture a fictional thought to try the loop.', 'empty'));
   $('storage-count').textContent = `${state.captures.length} saved original${state.captures.length === 1 ? '' : 's'}`;
@@ -78,6 +80,7 @@ function renderSpans() {
   if (!directory.length) $('span-list').append(element('p', 'No Attention Spans match. Try another name or a phrase from a post.', 'empty'));
   if (!span) return;
   $('span-description').textContent = descriptions[span.kind];
+  renderSpanDepth(span);
   const posts = roots().filter(c => spanKey(c.span) === span.id).slice().reverse();
   const byId = new Map(state.captures.map(c => [c.id, c])), counts = new Map();
   for (const c of state.captures) { const root = threadRoot(c, byId); if (root && root.id !== c.id) counts.set(root.id, (counts.get(root.id) ?? 0) + 1); }
@@ -108,7 +111,8 @@ function renderThread() {
   const actions = element('div', undefined, 'post-actions');
   const choose = element('button', 'Choose a next step…', 'quiet'); choose.onclick = () => openSource(root.id, false);
   const reply = element('button', 'Reply', 'quiet'); reply.onclick = () => targetReply(root.id);
-  actions.append(reply, choose); main.append(actions);
+  const hold = element('button', 'Hold my place…', 'text-button'); hold.onclick = openHold;
+  actions.append(reply, choose, hold); main.append(actions);
   const children = new Map();
   for (const capture of state.captures) if (parentOf(capture)) { const list = children.get(capture.parentId) ?? []; list.push(capture); children.set(capture.parentId, list); }
   const rows = [], visited = new Set([root.id]);
@@ -199,7 +203,7 @@ $('reply-form').onsubmit = async event => {
 function refreshed() {
   refreshing = refreshing.catch(() => {}).then(async () => {
     state = await store.read(); const health = await store.health();
-    storageHealthy = true; $('capture-open').disabled = false; render();
+    storageHealthy = true; $('capture-open').disabled = booting; render();
     $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
     $('recovery-status').textContent = health.migrationWarning || `${state.recovery.length} damaged record${state.recovery.length === 1 ? '' : 's'} preserved separately. Verified originals remain available and you can keep capturing.`;
     $('recovery-items').replaceChildren(...state.recovery.map(record => {
@@ -213,6 +217,104 @@ function refreshed() {
   });
   return refreshing;
 }
+
+let holdExpected = null, holdRoute = 'home', holdContext, dropping = null, holdSaving = false, dropSaving = false;
+const commitments = () => deriveCommitments(state.intentEvents ?? []);
+const openPlaces = () => (state.places ?? []).filter(place => !(state.resumptions ?? []).some(r => r.placeId === place.id)).sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+function placeStatus(place) {
+  if (!place.choice) return 'Your reading context is kept. Resuming leaves the current NOW unchanged.';
+  const item = commitments().find(c => c.id === place.commitmentId);
+  if (!item || !state.captures.some(c => c.id === place.choice.captureId)) return 'The source or commitment needs recovery. Your return notes are kept.';
+  if (['COMPLETE', 'DROPPED'].includes(item.state)) return `This commitment is ${item.state.toLowerCase()}. Its return notes are kept; resuming won’t reactivate it.`;
+  return state.now?.quote === place.choice.quote ? 'Your chosen step is still here.' : `Resuming will make this step NOW again: ${place.choice.quote}`;
+}
+function canResume(place) {
+  if (!place.choice) return true;
+  return commitments().some(c => c.id === place.commitmentId && ['ACTIVE', 'COMMITTED'].includes(c.state)) && state.captures.some(c => c.id === place.choice.captureId);
+}
+async function resumeSavedPlace(place, button) {
+  button.disabled = true;
+  try {
+    const closeOnly = !canResume(place), result = await store.resumePlace(place.id, state.now, { closeOnly });
+    state = result.state; render();
+    if (result.alreadyHandled) { notice('This return point was already handled. Your current work is unchanged.'); return; }
+    if (!closeOnly) {
+      showView(result.route); $('span-search').value = place.context.spanSearch; renderSpans();
+      const source = document.querySelector('#thread-post .original-disclosure'); if (source) source.open = place.context.sourceExpanded;
+      requestAnimationFrame(() => scrollTo(0, place.context.scrollY));
+    }
+    notice(closeOnly ? 'Return point closed. Its notes remain in Workspace.' : `Your place is restored.${place.nextAction ? ` Return note: ${place.nextAction}` : ''}`);
+  } catch (error) { fail(error); } finally { button.disabled = false; }
+}
+function renderReturnPoint() {
+  const place = openPlaces().at(-1); $('return-card').hidden = !place; if (!place) return;
+  $('return-summary').textContent = place.summary; $('return-next').textContent = place.nextAction ? `Return note: ${place.nextAction}` : '';
+  $('return-status').textContent = placeStatus(place); $('resume-place').textContent = canResume(place) ? 'Resume this step' : 'Close return point';
+  $('resume-place').onclick = () => resumeSavedPlace(place, $('resume-place'));
+}
+function openHold() {
+  if (holdSaving) { notice('Your return point is still saving. Keep this window open.'); return; }
+  holdExpected = structuredClone(state.now); holdRoute = routeFromHash();
+  holdContext = { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false };
+  const thought = threadId && state.captures.find(c => c.id === threadId);
+  $('hold-summary').value = thought ? titleOf(thought.text, 300) : state.now?.quote ?? '';
+  $('hold-next').value = ''; $('hold-error').textContent = ''; $('hold-dialog').showModal(); $('hold-summary').focus();
+}
+$('hold-open').onclick = openHold;
+$('hold-form').onsubmit = async event => {
+  event.preventDefault(); if (holdSaving) return; holdSaving = true;
+  for (const id of ['save-place', 'hold-summary', 'hold-next']) $(id).disabled = true;
+  try {
+    await store.holdPlace({ summary: $('hold-summary').value, nextAction: $('hold-next').value, route: holdRoute, context: holdContext, expected: holdExpected });
+    await refreshed(); $('hold-dialog').close(); notice('Your place is kept. Capture or explore freely; NOW is unchanged.');
+  } catch (error) { $('hold-error').textContent = `${error.message} Your return note is still here.`; }
+  finally { holdSaving = false; for (const id of ['save-place', 'hold-summary', 'hold-next']) $(id).disabled = false; }
+};
+function sourceButton(choice) {
+  const button = element('button', 'See source ↗', 'text-button');
+  const source = state.captures.find(c => c.id === choice.captureId);
+  if (source) button.onclick = () => openSource(source.id, true);
+  else { button.textContent = 'Source needs recovery ↗'; button.onclick = () => showView('engine'); }
+  return button;
+}
+function renderSpanDepth(span) {
+  const body = $('span-depth'); body.replaceChildren();
+  if (span.kind === 'proof') {
+    body.append(element('h2', 'Completion receipts'), element('p', 'These record your own Done action. They’re self-reported, not independently verified proof.', 'muted'));
+    const completed = commitments().filter(c => c.receipt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    for (const item of completed) {
+      const card = element('article', undefined, 'panel proof-receipt');
+      card.append(element('span', 'COMPLETE · SELF-REPORTED', 'eyebrow'), element('h3', item.choice.quote), element('p', item.receipt.note, 'reply-body'), element('p', formatDate(item.receipt.at), 'small'), sourceButton(item.choice));
+      if (state.captures.find(c => c.id === item.choice.captureId)?.sample) card.append(element('p', 'Fictional example source.', 'small'));
+      body.append(card);
+    }
+    if (!completed.length) body.append(element('p', 'No completion receipts yet. When you mark a chosen step done, its receipt will appear here.', 'empty'));
+  }
+  if (span.kind === 'workspace') {
+    body.append(element('h2', 'Chosen work'), element('p', 'Only explicit choices appear here. Captures and replies can stay thoughts.', 'muted'));
+    for (const item of commitments().filter(c => ['COMMITTED', 'ACTIVE'].includes(c.state))) {
+      const card = element('article', undefined, 'panel commitment-card'); card.append(element('span', item.state, 'eyebrow'), element('h3', item.choice.quote));
+      const actions = element('div', undefined, 'post-actions');
+      if (item.state !== 'ACTIVE') { const choose = element('button', 'Make this NOW', 'quiet'); choose.onclick = async () => { choose.disabled = true; try { state = await store.selectCommitment(item.id, state.now); render(); showView('home'); notice('Chosen work restored to NOW.'); } catch (error) { fail(error); } finally { choose.disabled = false; } }; actions.append(choose); }
+      const drop = element('button', 'Drop commitment…', 'text-button'); drop.onclick = () => { if (dropSaving) { notice('The commitment change is still saving.'); return; } dropping = item; $('drop-choice').textContent = item.choice.quote; $('drop-note').value = ''; $('drop-error').textContent = ''; $('drop-dialog').showModal(); $('drop-note').focus(); };
+      actions.append(sourceButton(item.choice), drop); card.append(actions); body.append(card);
+    }
+    for (const place of state.places ?? []) {
+      const card = element('details', undefined, 'panel'); card.append(element('summary', `Return point: ${place.summary}`), element('p', place.nextAction || 'No extra return note.', 'reply-body'));
+      const receipt = (state.resumptions ?? []).find(r => r.placeId === place.id);
+      card.append(element('p', receipt ? `${receipt.kind === 'closed' ? 'Closed' : 'Resumed'} ${formatDate(receipt.at)}. Original notes kept.` : placeStatus(place), 'small'));
+      if (!receipt) { const resume = element('button', canResume(place) ? 'Resume this step' : 'Close return point', 'quiet'); resume.onclick = () => resumeSavedPlace(place, resume); card.append(resume); }
+      body.append(card);
+    }
+    const closed = commitments().filter(c => c.state === 'DROPPED');
+    if (closed.length) { const history = element('details', undefined, 'panel'); history.append(element('summary', 'Dropped commitments, with their reasons')); for (const c of closed) history.append(element('h3', c.choice.quote), element('p', c.history.at(-1).note, 'reply-body'), sourceButton(c.choice)); body.append(history); }
+  }
+}
+$('drop-form').onsubmit = async event => {
+  event.preventDefault(); if (!dropping || dropSaving) return; dropSaving = true; $('save-drop').disabled = $('drop-note').disabled = true;
+  try { state = await store.dropCommitment(dropping.id, $('drop-note').value, dropping.latestId); render(); $('drop-dialog').close(); notice('Commitment dropped. Its reason and original are kept. Nothing else was chosen.'); }
+  catch (error) { $('drop-error').textContent = error.message; } finally { dropSaving = false; $('save-drop').disabled = $('drop-note').disabled = false; }
+};
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
 addEventListener('hashchange', () => showView(routeFromHash()));
@@ -249,7 +351,7 @@ $('capture-form').onsubmit = async event => {
 $('show-raw').onclick = () => { rawView = true; renderSource(); };
 $('show-organized').onclick = () => { rawView = false; renderSource(); };
 $('now-original').onclick = () => state.now && openSource(state.now.captureId, true);
-$('now-done').onclick = async () => { try { state = await store.complete(state.now); render(); notice('Done. The original is still in Attention Spans. Nothing else was promoted.'); } catch (error) { fail(error); } };
+$('now-done').onclick = async () => { try { state = await store.complete(state.now); render(); notice('Done. Your self-reported receipt is in Proof.'); } catch (error) { fail(error); } };
 function downloadText(raw, filename, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([raw], { type })); const link = element('a'); link.href = url; link.download = filename;
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -284,7 +386,7 @@ $('sample-reset').onclick = () => replaceDemo(true); $('reset').onclick = () => 
 $('lock-note').textContent = 'IndexedDB transactions serialize writes across tabs. Changed records refresh when another tab saves or this window becomes active. Browser storage can still be erased: keep downloaded backups.';
 loadDraft();
 try {
-  store = createStore(); await store.seed(); await refreshed(); loadDraft();
+  store = createStore(); await store.seed(); await refreshed(); loadDraft(); booting = false; $('capture-open').disabled = false;
   store.subscribe(() => refreshed().catch(fail));
   addEventListener('visibilitychange', () => { if (!document.hidden) refreshed().catch(fail); });
   addEventListener('focus', () => refreshed().catch(fail));

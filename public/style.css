@@ -823,3 +823,9 @@ textarea {
   .feed-toolbar { align-items:start; }
   .feed-toolbar .primary { padding-inline:.8rem; }
 }
+.return-card { margin-top:1rem; }
+.return-card>p:first-of-type { color:var(--ink); margin-top:.8rem; }
+.commitment-card h3,.proof-receipt h3 { font-size:1rem; line-height:1.6; font-weight:450; overflow-wrap:anywhere; }
+#span-depth { margin-bottom:2rem; }
+#span-depth:empty { display:none; }
+#span-depth>h2 { font-size:1.8rem; }
