@@ -16,6 +16,7 @@ try {
       code = code.replace('store = createStore(); await store.seed();', 'store = createStore(); await new Promise(resolve => setTimeout(resolve, 800)); await store.seed();');
       code = code.replace('let record = await shelf.load(context);', "if (window.__delayReply && context.startsWith('reply:')) await new Promise(resolve => setTimeout(resolve, 400)); let record = await shelf.load(context);");
       code = code.replace('await store.capture(text, span, null, { requestId:', "if (window.__delayCapture) { window.__captureWaiting = true; await new Promise(resolve => { window.__releaseCapture = resolve; }); } await store.capture(text, span, null, { requestId:");
+      code = code.replace("await clearDraft('capture', body); releaseRequest", "await clearDraft('capture', body); if(window.__pauseCleanup) { window.__cleanupWaiting = true; await new Promise(resolve => { window.__releaseCleanup = resolve; }); } releaseRequest");
       return route.fulfill({ response, body: code });
     }
     return route.continue();
@@ -49,5 +50,9 @@ try {
   await page.locator('#save-capture').click(); await page.waitForFunction(() => window.__captureWaiting); await page.locator('#capture-text').fill('Newer unsent text'); await page.evaluate(() => window.__releaseCapture());
   await page.getByText('Saved. Exact original read back and verified. Your next step is unchanged.', { exact: true }).waitFor(); assert.equal(await page.locator('#capture-text').inputValue(), 'Newer unsent text');
   await page.reload(); await page.locator('#capture-open').click(); assert.equal(await page.locator('#capture-text').inputValue(), 'Newer unsent text');
+  await page.locator('#capture-text').fill('Second submitted text'); await page.evaluate(() => { window.__delayCapture = false; window.__pauseCleanup = true; });
+  await page.locator('#save-capture').click(); await page.waitForFunction(() => window.__cleanupWaiting); await page.locator('#capture-text').fill('Writing entered during cleanup'); await page.evaluate(() => window.__releaseCleanup());
+  await page.locator('#save-capture:enabled').waitFor(); assert.equal(await page.locator('#capture-text').inputValue(), 'Writing entered during cleanup');
+  await page.reload(); await page.locator('#capture-open').click(); assert.equal(await page.locator('#capture-text').inputValue(), 'Writing entered during cleanup');
   assert.deepEqual(errors, []); assert.deepEqual(external, []); console.log('PASS: delayed startup protection; hold, span, drop and nested reply drafts; rapid reply route switching; later capture input survives save and reload.');
 } catch (error) { console.error('PAGE ERRORS:', errors, 'EXTERNAL:', external); throw error; } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

@@ -147,3 +147,11 @@ test('recovery cannot overwrite a draft whose database write is still pending', 
  const recovering = current.recoverRecord(copy); release(); await pending;
  await assert.rejects(recovering,/different draft/); assert.equal((await current.load('capture')).body.text,'Newer writing still saving.'); await current.close();
 });
+
+test('flush keeps reporting the latest failed write until a later save succeeds', async () => {
+ const {make, database} = setup(); let fail = true;
+ const s = make({database:{run(t,m,w){return fail && m==='readwrite' ? Promise.reject(Error('persistent failure')) : database.run(t,m,w);}}});
+ await assert.rejects(s.save('capture',body('Keep this.')),/persistent failure/);
+ await assert.rejects(s.flush(),/persistent failure/);
+ fail=false; await s.save('capture',body('Keep this.')); await s.flush(); await s.close();
+});

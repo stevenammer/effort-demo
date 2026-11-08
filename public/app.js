@@ -1,3 +1,4 @@
+import { setupOffline } from './offline.js';
 import { renderReading, readablePreview } from './reading.js';
 import { deriveCommitments } from './intent.js';
 import { organizeText, titleOf } from './core/ef.js';
@@ -221,7 +222,7 @@ $('reply-form').onsubmit = async event => {
   try {
     await store.capture(text, parent.span, parent.id, { requestId: requestId(`reply:${destination}`, body) });
     notice('Reply saved. Exact original verified. NOW is unchanged.');
-    if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) { try { await clearDraft(`reply:${destination}`, body); releaseRequest(`reply:${destination}`); setValue('reply-text', ''); } catch (e) { cleanupOffer(`reply:${destination}`, body, 'reply-draft-state', 'Reply saved.', () => { releaseRequest(`reply:${destination}`); if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) setValue('reply-text', ''); }, () => threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)); } }
+    if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) { try { await clearDraft(`reply:${destination}`, body); releaseRequest(`reply:${destination}`); if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) setValue('reply-text', ''); } catch (e) { cleanupOffer(`reply:${destination}`, body, 'reply-draft-state', 'Reply saved.', () => { releaseRequest(`reply:${destination}`); if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) setValue('reply-text', ''); }, () => threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)); } }
     try { await refreshed(); } catch (e) { status('reply-draft-state', `Reply saved, but refresh failed: ${e.message}`); }
   } catch (error) { $('reply-draft-state').textContent = `${error.message} Your draft is still here.`; }
   finally { $('save-reply').disabled = false; }
@@ -385,7 +386,7 @@ $('span-form').onsubmit = async event => {
     await saveDraft('span', body, 'span-error', true);
     let result = completed.get('span'); if (!result || result.signature !== signature) { result = { signature, span: await store.createSpan(body.name) }; completed.set('span', result); }
     notice('Attention Span ready. Nothing has been made a task.');
-    try { await clearDraft('span', body); completed.delete('span'); $('span-dialog').close(); setValue('span-name', ''); } catch (e) { cleanupOffer('span', body, 'span-error', 'Attention Span created.', () => { completed.delete('span'); $('span-dialog').close(); }); }
+    try { await clearDraft('span', body); completed.delete('span'); if (value('span-name') === body.name) { $('span-dialog').close(); setValue('span-name', ''); } } catch (e) { cleanupOffer('span', body, 'span-error', 'Attention Span created.', () => { completed.delete('span'); $('span-dialog').close(); }); }
     try { await refreshed(); openSpan(result.span.id); } catch (e) { notice(`Attention Span created, but the view could not refresh: ${e.message}`, true); }
   } catch (error) { status('span-error', error.message); } finally { $('save-span').disabled = false; }
 };
@@ -402,7 +403,7 @@ $('capture-form').onsubmit = async event => {
     await store.capture(text, span, null, { requestId: requestId('capture', body) });
     if (generation !== epoch) return;
     notice('Saved. Exact original read back and verified. Your next step is unchanged.');
-    if (JSON.stringify(captureBody()) === JSON.stringify(body)) { try { await clearDraft('capture', body); releaseRequest('capture'); setValue('capture-text', ''); $('capture-dialog').close(); } catch (e) { cleanupOffer('capture', body, 'draft-state', 'Original saved.', () => { releaseRequest('capture'); if (JSON.stringify(captureBody()) === JSON.stringify(body)) { setValue('capture-text', ''); $('capture-dialog').close(); } }, () => JSON.stringify(captureBody()) === JSON.stringify(body)); } }
+    if (JSON.stringify(captureBody()) === JSON.stringify(body)) { try { await clearDraft('capture', body); releaseRequest('capture'); if (JSON.stringify(captureBody()) === JSON.stringify(body)) { setValue('capture-text', ''); $('capture-dialog').close(); } } catch (e) { cleanupOffer('capture', body, 'draft-state', 'Original saved.', () => { releaseRequest('capture'); if (JSON.stringify(captureBody()) === JSON.stringify(body)) { setValue('capture-text', ''); $('capture-dialog').close(); } }, () => JSON.stringify(captureBody()) === JSON.stringify(body)); } }
     try { await refreshed(); } catch (e) { status('draft-state', `Original saved; refresh failed: ${e.message}`); }
   } catch (error) { if (generation !== epoch) return; fail(error); $('draft-state').textContent = `${error.message} Your draft is still here.`; }
   finally { saving = false; $('save-capture').disabled = false; $('save-capture').textContent = 'Save original'; }
@@ -489,6 +490,7 @@ try {
   try {
     shelf = createDraftShelf(); await shelf.ready;
     const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); $('capture-span').value = draft.body.span; }
+    else if ((await shelf.list()).records.some(record => record.body.text || record.body.name || record.body.note || record.body.summary || record.body.nextAction)) notice('Unfinished writing is available in Engine Room → Draft recovery.');
   } catch (error) {
     await shelf?.close().catch(() => {}); shelf = null; const recovered = recoverLegacyCapture();
     status('draft-state', `Draft storage could not open: ${error.message}. ${recovered ? 'A legacy copy is visible here; copy it before leaving.' : 'Writing is only kept in this window. Copy it before leaving.'} Original saving is available.`);
@@ -505,3 +507,20 @@ try {
   recoverLegacyCapture(); status('draft-state', 'Workspace unavailable. You can write and copy text, but saving is unavailable.'); showView('engine', false);
   fail(Error(`The local workspace could not open: ${error.message} Your saved data has not been cleared. Keep this tab open and copy any draft before retrying.`));
 }
+
+async function prepareUpdate() {
+  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting) throw Error('Wait for the current save or view to finish.');
+  document.body.inert = true;
+  try {
+    const pending = [['capture', captureBody()]];
+    if (threadId) pending.push([`reply:${threadId}`, replyBody()]);
+    for (const [context, body] of pending) {
+      if (fenced && !adopted.has(context)) throw Error('The workspace changed in another tab. Copy any visible draft before reloading.');
+      if (!shelf) throw Error('Draft storage is unavailable. Copy your writing before reloading.');
+      await shelf.save(context, body);
+    }
+    await shelf.flush();
+    return () => { document.body.inert = false; };
+  } catch (error) { document.body.inert = false; throw error; }
+}
+setupOffline({status:$('offline-status'), button:$('apply-update'), beforeUpdate:prepareUpdate}).catch(() => { $('offline-status').textContent = 'Offline availability could not be checked. Keep a backup.'; });

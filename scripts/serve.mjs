@@ -17,14 +17,14 @@ export function createDemoServer() {
     catch { res.writeHead(400, headers); res.end(); return; }
     if (path === '/') path = '/index.html';
     if (path === '/public' || path === '/public/') path = '/public/index.html';
-    const allowed = ['/index.html', '/README.md', '/SOURCE.md', '/LICENSE'].includes(path) ||
+    const allowed = ['/index.html', '/README.md', '/SOURCE.md', '/LICENSE', '/sw.js', '/shell-manifest.js'].includes(path) ||
       path.startsWith('/public/') && ['.html', '.js', '.css', '.svg'].includes(extname(path));
     const target = resolve(root, `.${path}`);
     if (!allowed || !target.startsWith(resolve(root) + sep)) { res.writeHead(404, headers); res.end(); return; }
     try {
       const body = await readFile(target);
       const type = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' }[extname(path)] ?? 'text/plain; charset=utf-8';
-      res.writeHead(200, { ...headers, 'Content-Type': type }); res.end(req.method === 'HEAD' ? undefined : body);
+      res.writeHead(200, { ...headers, ...(path === '/sw.js' ? { 'Content-Security-Policy': "default-src 'none'; script-src 'self'; connect-src 'self'" } : {}), 'Content-Type': type }); res.end(req.method === 'HEAD' ? undefined : body);
     } catch { res.writeHead(404, headers); res.end(); }
   });
 }

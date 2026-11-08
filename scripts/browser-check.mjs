@@ -43,6 +43,7 @@ try {
     await page.waitForFunction(() => document.querySelector('#now-title').textContent === "I'll test the outline tomorrow.");
     assert.equal(await page.locator('#now-title').innerText(), "I'll test the outline tomorrow.");
     await page.locator('[data-view="engine"]').click();
+    await page.locator('#offline-status').getByText('Available offline in this browser.', { exact: false }).waitFor();
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]);
     const exported = await readFile(await download.path(), 'utf8'); const bundle = JSON.parse(exported);
     assert.equal(bundle.payload.captures.at(-1).text, original);
