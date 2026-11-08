@@ -1,3 +1,4 @@
+import { moveSnapshotShape, validMoveSnapshot, validateThinkingState } from './thinking.js';
 import { request } from './database.js';
 import { exactKeys, validId, validDate, validHash, sha256, stableId, same, IntegrityError } from './primitives.js';
 import { seal, noteAllowed, validatePlace } from './intent.js';
@@ -26,7 +27,8 @@ async function inspectExplorations(state) {
   const errors = new Map(), children = new Map();
   for (const row of state.explorations) {
     try {
-      await checkSeal(row, ['id', 'sourceId', 'parentId', 'returnPointId', 'dial', 'text', 'author', 'at']);
+      await checkSeal(row, ['id', 'sourceId', 'parentId', 'returnPointId', 'dial', 'text', 'author', 'at', ...(row.move !== undefined ? ['move'] : [])]);
+      if (row.move !== undefined && !moveSnapshotShape(row.move)) throw new IntegrityError('An exploration has an invalid saved move.');
       if (!validId(row.id) || !validId(row.sourceId) || !(row.parentId === null || validId(row.parentId)) || !validId(row.returnPointId) || !EXPLORATION_DIALS.includes(row.dial) || !noteAllowed(row.text, true) || row.author !== 'self' || !validDate(row.at) || !captures.has(row.sourceId) || !places.has(row.returnPointId)) throw new IntegrityError('An exploration has invalid provenance or content.');
       if (row.parentId !== null) {
         const parent = branches.get(row.parentId);
@@ -86,11 +88,11 @@ export function validateProposalProvenance(capture, { captures, explorations, di
 }
 
 export function createExploration({ db, ready = async () => {}, notify = () => {}, recoveryRecord, ensureCapacity }) {
-  async function snapshot() {
+  async function snapshot(includeMoves = false) {
     await ready();
-    return db.run(['meta', 'captures', 'places', 'quarantine', ...EXPLORATION_TABLES], 'readonly', async tx => ({
+    return db.run(['meta', 'captures', 'places', 'quarantine', ...EXPLORATION_TABLES, ...(includeMoves ? ['moveEvents'] : [])], 'readonly', async tx => ({
       epoch: await meta(tx, 'epoch'), captures: await request(tx.objectStore('captures').getAll()), places: await request(tx.objectStore('places').getAll()), recovery: await request(tx.objectStore('quarantine').getAll()),
-      explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()),
+      moveEvents: includeMoves ? await request(tx.objectStore('moveEvents').getAll()) : [], explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()),
     }));
   }
   async function repair() {
@@ -111,7 +113,8 @@ export function createExploration({ db, ready = async () => {}, notify = () => {
   }
   async function save(table, input, requestId, expectedEpoch) {
     if (requestId !== undefined && !validId(requestId)) throw Error('The exploration request ID is invalid.');
-    const state = await snapshot();
+    const state = await snapshot(!!input.move);
+    if (input.move) { await validateThinkingState({ ...state, branchEvents: [] }); if (validMoveSnapshot(input.move, state.moveEvents, state.recovery) !== 'verified') throw Error('This move definition needs recovery. Your branch text is still yours to keep.'); }
     if (expectedEpoch !== undefined && expectedEpoch !== (state.epoch ?? null)) throw Error('The workspace changed. Keep your exploration and reopen it.');
     await validateExplorationState(state);
     const id = requestId ? await stableId(JSON.stringify([table, state.epoch ?? null, requestId])) : crypto.randomUUID();
@@ -126,8 +129,9 @@ export function createExploration({ db, ready = async () => {}, notify = () => {
     if (prior) return prior;
     const record = await seal({ id, ...input, author: 'self', at: new Date().toISOString() });
     await validateExplorationState({ ...state, [table]: [...state[table], record] });
-    const inserted = await db.run(['meta', 'captures', 'places', ...EXPLORATION_TABLES], 'readwrite', async tx => {
+    const inserted = await db.run(['meta', 'captures', 'places', ...EXPLORATION_TABLES, ...(input.move ? ['moveEvents'] : [])], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== state.epoch) throw Error('The workspace changed. Keep your exploration and retry.');
+      if (input.move?.revisionId && !same(await request(tx.objectStore('moveEvents').get(input.move.revisionId)), state.moveEvents.find(row => row.id === input.move.revisionId))) throw Error('The saved move changed. Reopen it before branching.');
       const target = tx.objectStore(table), existing = await request(target.get(id));
       if (existing) return existing;
       if (await request(target.count()) >= LIMIT) throw Error('The exploration storage limit was reached.');
@@ -141,8 +145,8 @@ export function createExploration({ db, ready = async () => {}, notify = () => {
     if (!same(actual, inserted)) throw Error('The exploration could not be read back exactly. Keep your text and retry.');
     notify(); return actual;
   }
-  async function explore({ sourceId, parentId = null, returnPointId, dial, text }, { requestId, expectedEpoch } = {}) {
-    return save('explorations', { sourceId, parentId, returnPointId, dial, text }, requestId, expectedEpoch);
+  async function explore({ sourceId, parentId = null, returnPointId, dial, text, move = null }, { requestId, expectedEpoch } = {}) {
+    return save('explorations', { sourceId, parentId, returnPointId, dial, text, ...(move ? { move } : {}) }, requestId, expectedEpoch);
   }
   async function distill({ explorationId, type, text }, { requestId, expectedEpoch } = {}) {
     return save('distillations', { explorationId, type, text }, requestId, expectedEpoch);

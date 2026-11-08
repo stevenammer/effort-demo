@@ -1,3 +1,4 @@
+import { deriveMoves, deriveBranchStatuses, moveSnapshot, validMoveSnapshot } from './thinking.js';
 import { artifactBytes, artifactPreview, artifactSourceStatus, ARTIFACT_LIMITS } from './artifacts.js';
 import { EXPLORATION_DIALS, DISTILLATION_TYPES, validateProposalProvenance } from './exploration.js';
 import { setupOffline } from './offline.js';
@@ -20,6 +21,8 @@ let store, state, activeSpan = null, threadId = null, replyTarget = null, curren
 let shelf, workspaceEpoch, fenced = false, resetting = false;
 let artifactTarget = null, artifactEpoch, artifactSaving = false, artifactSelection = null, artifactFocusPending = false;
 let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
+let moveEditing = null, moveEpoch, moveSaving = false, moveLoading = false, branchEditing = null, branchEpoch, branchSaving = false, branchLoading = false;
+let branchSelection = null, branchFocusPending = false;
 const proposalPending = new Set();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
 const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
@@ -58,10 +61,12 @@ function formatDate(date) { return new Intl.DateTimeFormat(undefined, { month: '
 function showView(route, focus = true) {
   const [base, encoded] = route.split('/');
   artifactSelection = base === 'artifact' ? encoded : null; artifactFocusPending = !!artifactSelection;
+  branchSelection = base === 'branch' ? encoded : null; branchFocusPending = !!branchSelection;
+  const selectedBranch = branchSelection && state?.explorations?.find(b => b.id === branchSelection), branchSource = selectedBranch && state?.captures.find(c => c.id === selectedBranch.sourceId);
   const selectedFile = artifactSelection && state?.artifacts?.find(a => a.id === artifactSelection), fileSource = selectedFile && state?.captures.find(c => c.id === selectedFile.captureId);
-  currentView = base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
-  try { activeSpan = base === 'artifact' && !fileSource ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
-  const nextThread = base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
+  currentView = base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
+  try { activeSpan = (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
+  const nextThread = base === 'branch' && branchSource ? branchSource.id : base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
   if (threadId !== nextThread) { if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
@@ -70,7 +75,8 @@ function showView(route, focus = true) {
   if (location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
   if (state) { renderSpans(); renderThread(); }
   if (focus) { $('main').focus(); scrollTo(0, 0); }
-  focusArtifact();
+  focusArtifact(); focusBranch();
+  if (base === 'branch' && !selectedBranch) notice('This branch is unavailable in the active workspace. Its raw copy may be in Engine Room recovery or a backup.', true);
   if (base === 'artifact' && !selectedFile) notice('This file is unavailable in the active workspace. Check Engine Room recovery or a backup.', true);
 }
 const routeFromHash = () => location.hash.slice(1) || 'home';
@@ -187,20 +193,22 @@ function renderThread() {
   const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
   $('reply-target').textContent = validTarget ? `Replying to: ${displayTitle(target.text, 100)}` : 'Choose a reply target before saving. Your draft is still here.';
   $('reply-to-root').onclick = () => targetReply(root.id);
-  renderExplorations(root); focusArtifact();
+  renderExplorations(root); focusArtifact(); focusBranch();
 }
 function renderExplorations(root) {
   const host = $('thread-explorations'); host.replaceChildren();
   const branches = (state.explorations ?? []).filter(b => threadRoot(state.captures.find(c => c.id === b.sourceId), state.captures)?.id === root.id);
   if (!branches.length) return;
   host.append(element('h2', 'Room to wander, with a way back.'), element('p', 'Branches and distillations are your own writing. Keeping them creates no obligation.', 'muted'));
+  if (state.thinkingWarning) host.append(element('p', state.thinkingWarning, 'notice'));
+  const hiddenBranches = element('details', undefined, 'set-aside-branches'), hiddenCount = branches.filter(b => ['parked', 'discarded'].includes(branchInfo(b).status)).length; hiddenBranches.open = branches.some(b => b.id === branchSelection && ['parked', 'discarded'].includes(branchInfo(b).status)); hiddenBranches.append(element('summary', `Set aside, with history kept (${hiddenCount})`));
   const byId = new Map(branches.map(b => [b.id, b]));
   for (const branch of branches.slice().sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
-    const card = element('article', undefined, 'panel exploration-card'); card.id = `branch-${branch.id}`;
+    const card = element('article', undefined, 'panel exploration-card'); card.id = `branch-${branch.id}`; card.dataset.branchId = branch.id; card.tabIndex = -1; if (branch.id === branchSelection) card.classList.add('selected-branch');
     card.append(element('span', `${branch.dial} · YOUR EXPLORATION`, 'eyebrow'), element('h3', displayTitle(branch.text, 100)), renderReading(branch.text, { headingBase: 3 }));
     const parent = byId.get(branch.parentId), lineage = element('p', parent ? 'Branched from: ' : 'From the original thought. ', 'small');
-    if (parent) { const link = element('a', displayTitle(parent.text, 90)); link.href = `#branch-${parent.id}`; link.onclick = event => { event.preventDefault(); $(`branch-${parent.id}`)?.scrollIntoView({ block: 'center' }); }; lineage.append(link); }
-    card.append(lineage, element('p', `${formatDate(branch.at)} · Exact writing verified`, 'small'));
+    if (parent) { const link = element('a', displayTitle(parent.text, 90)); link.href = `#branch/${parent.id}`; link.onclick = event => { if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); showView(`branch/${parent.id}`); }; lineage.append(link); }
+    card.append(lineage, element('p', `${formatDate(branch.at)} · Exact writing verified`, 'small')); branchThinking(card, branch);
     const raw = element('details', undefined, 'original-disclosure'); raw.append(element('summary', 'Read exact branch writing'), element('pre', branch.text, 'raw'));
     const download = element('button', 'Download branch text', 'text-button'); download.onclick = () => downloadText(branch.text, `effort-branch-${branch.id}.txt`, 'text/plain'); raw.append(download); card.append(raw);
     const actions = element('div', undefined, 'post-actions');
@@ -220,12 +228,135 @@ function renderExplorations(root) {
         const promote = element('button', 'Choose from original…', 'text-button'); promote.onclick = () => { openSource(branch.sourceId, false); notice('Review the exact original, then choose a next step explicitly. This distillation hasn’t committed anything.'); }; kept.append(promote); }
       card.append(kept);
     }
-    host.append(card);
+    (['parked', 'discarded'].includes(branchInfo(branch).status) ? hiddenBranches : host).append(card);
+  }
+  if (hiddenCount) host.append(hiddenBranches); focusBranch();
+}
+const branchLabels = { active: 'Open exploration', parked: 'Set aside', distilled: 'Distilled', discarded: 'Let go, history kept', weird_but_alive: 'Weird but alive' };
+const thinkingMoves = () => deriveMoves(state.moveEvents ?? [], state.recovery ?? []);
+function branchInfo(branch) {
+  if (state.thinkingWarning) return { branchId: branch.id, status: null, note: '', evidence: false, latestId: null, history: [], recovery: true };
+  return deriveBranchStatuses(state.branchEvents ?? [], state.recovery ?? []).find(row => row.branchId === branch.id) ?? { branchId: branch.id, status: 'active', note: '', evidence: false, latestId: null, history: [], implicit: true };
+}
+function sessionRoot(branch) { const map = new Map((state.explorations ?? []).map(row => [row.id, row])), seen = new Set(); let root = branch; while (root.parentId && map.has(root.parentId) && !seen.has(root.id)) { seen.add(root.id); root = map.get(root.parentId); } return root; }
+function branchLink(branch, text = displayTitle(branch.text, 90)) { const link = element('a', text, 'small'); link.href = `#branch/${branch.id}`; link.onclick = event => { if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); showView(`branch/${branch.id}`); }; return link; }
+function focusBranch() {
+  if (!branchFocusPending || !branchSelection) return;
+  requestAnimationFrame(() => { if (!branchFocusPending || !branchSelection) return; const card = [...$('view-thread').querySelectorAll('[data-branch-id]')].find(e => e.dataset.branchId === branchSelection); if (!card) return; branchFocusPending = false; card.focus({ preventScroll: true }); card.scrollIntoView({ block: 'center' }); });
+}
+function branchPromotion(branch) {
+  const distillations = new Set((state.distillations ?? []).filter(d => d.explorationId === branch.id).map(d => d.id)), proposals = new Set(state.captures.filter(c => distillations.has(c.derivedFromId)).map(c => c.id));
+  return commitments().filter(c => proposals.has(c.choice.captureId));
+}
+function branchThinking(card, branch) {
+  const info = branchInfo(branch), status = info.recovery ? 'Status needs recovery' : info.implicit ? 'Saved exploration' : branchLabels[info.status];
+  card.append(element('p', status, 'branch-status badge'));
+  const root = sessionRoot(branch), session = element('p', undefined, 'small'); session.append(root.id === branch.id ? document.createTextNode('Session root · Return point kept') : document.createTextNode('Session: ')); if (root.id !== branch.id) session.append(branchLink(root)); card.append(session);
+  if (branch.move) {
+    const saved = element('details', undefined, 'saved-move'); const trust = validMoveSnapshot(branch.move, state.moveEvents ?? [], state.recovery ?? []);
+    saved.append(element('summary', `Thinking move: ${branch.move.name}`), element('pre', branch.move.prompt, 'raw'), element('p', trust === 'verified' && !state.thinkingWarning ? 'Exact prompt saved with this branch. Later edits don’t rewrite it.' : 'Saved prompt preserved. Its definition history needs recovery.', 'small')); card.append(saved);
+  }
+  if (info.note) card.append(element('p', info.note, 'branch-note reply-body'));
+  if (info.evidence && !info.recovery) card.append(element('p', 'You explicitly kept this branch as move evidence. This isn’t a success score.', 'small branch-evidence'));
+  const promotions = branchPromotion(branch);
+  if (promotions.length) { const proof = element('details', undefined, 'branch-promotion'); proof.append(element('summary', 'Used for a chosen step'), element('p', 'These source-linked choices came from a proposal. Branch status alone never creates work.', 'small')); for (const c of promotions) proof.append(element('p', `${c.choice.quote} · ${c.state}`, 'small'), sourceButton(c.choice)); card.append(proof); }
+  const history = element('details', undefined, 'branch-history'); history.append(element('summary', 'Status history'));
+  if (!info.history.length) history.append(element('p', info.recovery ? 'Raw history is preserved in Engine Room recovery.' : 'No status choice yet. Saving the thought didn’t create an obligation.', 'small'));
+  for (const row of info.history) history.append(element('p', `${formatDate(row.at)} · ${branchLabels[row.status]}${row.evidence ? ' · Kept as move evidence' : ''}`, 'small'), element('p', row.note || 'No extra note.', 'reply-body'));
+  card.append(history);
+  const actions = element('div', undefined, 'post-actions'), edit = element('button', 'Update branch status…', 'text-button'); edit.disabled = !!state.thinkingWarning || branchSaving; edit.onclick = () => openBranchStatus(branch); actions.append(edit, branchLink(branch, 'Branch permalink')); card.append(actions);
+}
+function renderMoves(body) {
+  body.append(element('h2', 'Thinking moves'), element('p', 'Optional tools for your own thinking. They’re editable, and you can turn any of them off. They aren’t a personality profile.', 'muted'), element('p', 'Open a thought, choose Explore safely…, then select a move. Each branch keeps its original prompt. Examples below come only from branches you explicitly keep as evidence.', 'small'));
+  if (state.thinkingWarning) { body.append(element('p', state.thinkingWarning, 'notice')); return; }
+  const add = element('button', '+ Add a thinking move', 'quiet'); add.disabled = moveSaving; add.onclick = () => openMoveEditor(); body.append(add);
+  for (const move of thinkingMoves().slice().sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))) {
+    const card = element('article', undefined, 'panel move-card'); card.dataset.moveId = move.id;
+    card.append(element('h3', move.name), element('p', move.recovery ? 'Definition needs recovery. It isn’t offered for new use.' : move.enabled ? 'Available when you choose it.' : 'Turned off for new explorations. Saved examples remain.', 'small'), element('p', move.prompt || 'The saved definition is preserved in Engine Room recovery.', 'reply-body'));
+    const edit = element('button', move.recovery ? 'Recreate definition…' : 'Edit or turn off…', 'text-button'); edit.disabled = moveSaving; edit.onclick = () => openMoveEditor(move); card.append(edit);
+    const examples = (state.explorations ?? []).filter(branch => branch.move?.id === move.id && branchInfo(branch).evidence && !branchInfo(branch).recovery);
+    const evidence = element('details', undefined, 'move-evidence'); evidence.append(element('summary', `Examples you kept (${examples.length})`)); if (!examples.length) evidence.append(element('p', 'No examples tagged yet. Choosing a move or distilling a branch doesn’t automatically make it evidence.', 'small'));
+    for (const branch of examples) { const row = element('p'); row.append(branchLink(branch)); evidence.append(row); } card.append(evidence);
+    const history = element('details', undefined, 'move-history'); history.append(element('summary', `Saved revisions (${move.history.length})`));
+    for (const row of move.history.slice(-10)) history.append(element('p', `${formatDate(row.at)} · ${row.name} · ${row.enabled ? 'Offered' : 'Turned off'}`, 'small'), element('pre', row.prompt, 'raw'));
+    if (!move.history.length) history.append(element('p', move.recovery ? 'Prior definitions are preserved as raw recovery records.' : 'A suggested tool from EFFORT’s existing move library. It hasn’t been edited here.', 'small'));
+    if (move.history.length > 10) history.append(element('p', 'Latest ten revisions shown. The full history is downloadable and included in the workspace backup.', 'small'));
+    if (move.history.length) { const download = element('button', 'Download move history', 'text-button'); download.onclick = () => downloadText(JSON.stringify(move.history, null, 2), `effort-move-${move.id}-history.json`); history.append(download); } card.append(history); body.append(card);
   }
 }
+function populateMovePicker() {
+  const selected = explorationDraft?.move ?? null, options = [element('option', 'No move selected')]; options[0].value = '';
+  if (!state.thinkingWarning) for (const move of thinkingMoves().filter(m => m.enabled && !m.recovery)) { const option = element('option', move.name); option.value = move.id; options.push(option); }
+  if (selected && !options.some(option => option.value === selected.id)) { const saved = element('option', `${selected.name} (saved prompt)`); saved.value = selected.id; options.push(saved); }
+  $('explore-move').replaceChildren(...options); $('explore-move').value = selected?.id ?? '';
+  $('explore-move-prompt').hidden = !selected; $('explore-move-prompt').textContent = selected?.prompt ?? '';
+  $('explore-move-note').textContent = state.thinkingWarning ? 'Move history is unavailable. You can choose No move to keep writing without it.' : selected ? 'This exact prompt will stay with your branch. No model runs.' : 'Start with what you’re noticing. A move is optional.';
+}
+$('explore-current-place').onclick = async () => {
+  if (!explorationDraft || explorationDraft.parentId || explorationSaving || explorationLoading) return;
+  try { await refreshed(); if (!explorationDraft || explorationDraft.parentId) return; const source = state.captures.find(c => c.id === explorationDraft.sourceId); if (!source) throw Error('The source needs recovery. Your writing remains here.'); explorationDraft.returnPointId = null; explorationDraft.returnData = { route: routeFromHash(), context: { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false }, expected: structuredClone(state.now), summary: displayTitle(source.text, 300) }; releaseRequest(`explore:${source.id}:return`); await saveDraft(`explore:${source.id}`, exploreBody(), 'explore-error', true); status('explore-error', 'Your wording is kept. The return point will use the chosen work and view you have now. NOW is unchanged.'); } catch (error) { status('explore-error', error.message); }
+};
+$('explore-move').onchange = () => {
+  if (!explorationDraft || explorationSaving) return;
+  try { const id = $('explore-move').value; explorationDraft.move = id ? moveSnapshot(id, state.moveEvents ?? [], state.recovery ?? []) : null; populateMovePicker(); saveDraft(`explore:${explorationDraft.sourceId}`, exploreBody(), 'explore-error', true); }
+  catch (error) { status('explore-error', error.message); populateMovePicker(); }
+};
+const moveContext = () => moveEditing?.id ? `move:${moveEditing.id}` : 'move';
+const moveBody = () => ({ moveId: moveEditing?.id ?? null, name: value('move-name'), prompt: value('move-prompt'), enabled: $('move-enabled').checked, expectedLatestId: moveEditing?.expectedLatestId ?? null });
+const branchBody = () => ({ branchId: branchEditing?.id ?? null, status: $('branch-status').value, note: value('branch-note'), evidence: $('branch-evidence').checked, expectedLatestId: branchEditing?.expectedLatestId ?? null });
+async function openMoveEditor(move = null) {
+  if (moveSaving || moveLoading || resetting) return; if (state.thinkingWarning) { notice(state.thinkingWarning, true); return; }
+  moveLoading = true; moveEpoch = workspaceEpoch; moveEditing = { id: move?.id ?? null, expectedLatestId: move?.latestId ?? null };
+  for (const id of ['move-name', 'move-prompt', 'move-enabled', 'save-move', 'move-base']) $(id).disabled = true;
+  $('move-heading').textContent = move ? 'Edit a thinking move.' : 'Add your own thinking move.'; setValue('move-name', move?.name ?? ''); setValue('move-prompt', move?.prompt ?? ''); $('move-enabled').checked = move?.enabled ?? true; $('move-base').hidden = !move; $('move-current').textContent = move ? `${move.name}\n${move.enabled ? 'Offered' : 'Turned off'}\n\n${move.prompt}` : 'This is a new move.'; status('move-error', move?.recovery ? 'The seed prompt is shown if available. Prior edits stay in Engine Room recovery; saving creates a new definition.' : ''); $('move-dialog').showModal();
+  try { const saved = await loadContext(moveContext()); if (saved && (saved.body.name || saved.body.prompt)) { setValue('move-name', saved.body.name); setValue('move-prompt', saved.body.prompt); $('move-enabled').checked = saved.body.enabled; moveEditing.expectedLatestId = saved.body.expectedLatestId; status('move-error', 'Your draft is restored with its original editing base.'); } } catch (error) { status('move-error', error.message); }
+  moveLoading = false; for (const id of ['move-name', 'move-prompt', 'move-enabled', 'save-move', 'move-base']) $(id).disabled = false; $('move-name').focus();
+}
+async function openBranchStatus(branch) {
+  if (branchSaving || branchLoading || resetting) return; if (state.thinkingWarning) { notice(state.thinkingWarning, true); return; }
+  branchLoading = true; branchEpoch = workspaceEpoch; const info = branchInfo(branch); branchEditing = { id: branch.id, expectedLatestId: info.latestId };
+  $('branch-source').textContent = displayTitle(branch.text, 200); setValue('branch-note', info.note); $('branch-evidence').checked = !!info.evidence; $('branch-evidence').disabled = true;
+  $('branch-status').querySelector('[data-unknown]')?.remove(); if (!info.status) { const option = element('option', 'Choose a status'); option.value = ''; option.dataset.unknown = 'true'; $('branch-status').prepend(option); } $('branch-status').value = info.status ?? '';
+  $('branch-current').textContent = `${info.recovery ? 'Prior status needs recovery.' : branchLabels[info.status]}\n${info.note}`; status('branch-error', '');
+  for (const id of ['branch-status', 'branch-note', 'save-branch-status', 'branch-base']) $(id).disabled = true; $('branch-dialog').showModal();
+  try { const saved = await loadContext(`branch:${branch.id}`); if (saved && (saved.body.status || saved.body.note || saved.body.evidence)) { $('branch-status').value = saved.body.status; setValue('branch-note', saved.body.note); $('branch-evidence').checked = saved.body.evidence; branchEditing.expectedLatestId = saved.body.expectedLatestId; status('branch-error', 'Your draft is restored with its original status base.'); } } catch (error) { status('branch-error', error.message); }
+  branchLoading = false; $('branch-evidence').disabled = !branch.move; for (const id of ['branch-status', 'branch-note', 'save-branch-status', 'branch-base']) $(id).disabled = false; $('branch-note').focus();
+}
+for (const id of ['move-name', 'move-prompt']) $(id).oninput = () => { edited(id); if (moveEditing && !moveLoading) saveDraft(moveContext(), moveBody(), 'move-error', true); };
+$('move-enabled').onchange = () => { if (moveEditing && !moveLoading) saveDraft(moveContext(), moveBody(), 'move-error', true); };
+$('branch-note').oninput = () => { edited('branch-note'); if (branchEditing && !branchLoading) saveDraft(`branch:${branchEditing.id}`, branchBody(), 'branch-error', true); };
+for (const id of ['branch-status', 'branch-evidence']) $(id).onchange = () => { if (branchEditing && !branchLoading) saveDraft(`branch:${branchEditing.id}`, branchBody(), 'branch-error', true); };
+$('move-base').onclick = async () => {
+  if (!moveEditing?.id || moveSaving || moveLoading) return;
+  try { await refreshed(); if (workspaceEpoch !== moveEpoch || state.thinkingWarning) throw Error('The workspace changed or its history is unavailable. Close and reopen the current move; your writing remains here.'); const latest = thinkingMoves().find(m => m.id === moveEditing.id); if (!latest) throw Error('The move needs recovery. Your writing remains here.'); moveEditing.expectedLatestId = latest.latestId; $('move-current').textContent = `${latest.name}\n${latest.enabled ? 'Offered' : 'Turned off'}\n\n${latest.prompt}`; await saveDraft(moveContext(), moveBody(), 'move-error', true); status('move-error', 'Your wording is kept. Saving will add a new revision after the current one.'); } catch (error) { status('move-error', error.message); }
+};
+$('branch-base').onclick = async () => {
+  if (!branchEditing || branchSaving || branchLoading) return;
+  try { await refreshed(); if (workspaceEpoch !== branchEpoch || state.thinkingWarning) throw Error('The workspace changed or its history is unavailable. Close and reopen the branch; your writing remains here.'); const branch = state.explorations.find(b => b.id === branchEditing.id); if (!branch) throw Error('The branch needs recovery. Your writing remains here.'); const latest = branchInfo(branch); branchEditing.expectedLatestId = latest.latestId; $('branch-current').textContent = `${branchLabels[latest.status] ?? 'Status needs recovery'}\n${latest.note}\n${latest.evidence ? 'Kept as move evidence' : 'Not tagged as move evidence'}`; await saveDraft(`branch:${branch.id}`, branchBody(), 'branch-error', true); status('branch-error', 'Your choice and wording are kept. Saving will add a new status after the current one.'); } catch (error) { status('branch-error', error.message); }
+};
+$('move-form').onsubmit = async event => {
+  event.preventDefault(); if (!moveEditing || moveSaving || moveLoading || resetting) return; moveSaving = true; const body = moveBody(), context = moveContext(), generation = epoch;
+  for (const id of ['move-name', 'move-prompt', 'move-enabled', 'save-move', 'move-base']) $(id).disabled = true;
+  try { await saveDraft(context, body, 'move-error', true); if (generation !== epoch) return; await store.saveMove(body, { requestId: requestId(context, body), expectedEpoch: moveEpoch }); await refreshed(); if (generation !== epoch || workspaceEpoch !== moveEpoch) return; notice('Thinking move saved. Existing branches keep the exact prompt they used.');
+    try { await clearDraft(context, body); releaseRequest(context); if (JSON.stringify(moveBody()) === JSON.stringify(body)) { $('move-dialog').close(); moveEditing = null; } }
+    catch (error) { cleanupOffer(context, body, 'move-error', 'Move saved.', () => { releaseRequest(context); $('move-dialog').close(); moveEditing = null; }, () => !!moveEditing && JSON.stringify(moveBody()) === JSON.stringify(body)); }
+  } catch (error) { if (generation === epoch) status('move-error', `${error.message} Your editing draft is kept.`); }
+  finally { moveSaving = false; for (const id of ['move-name', 'move-prompt', 'move-enabled', 'save-move', 'move-base']) $(id).disabled = false; if (state) renderSpans(); }
+};
+$('branch-form').onsubmit = async event => {
+  event.preventDefault(); if (!branchEditing || branchSaving || branchLoading || resetting) return; branchSaving = true; const body = branchBody(), context = `branch:${body.branchId}`, generation = epoch, route = routeFromHash();
+  for (const id of ['branch-status', 'branch-note', 'branch-evidence', 'save-branch-status', 'branch-base']) $(id).disabled = true;
+  try { await saveDraft(context, body, 'branch-error', true); if (generation !== epoch) return; await store.setBranchStatus(body, { requestId: requestId(context, body), expectedEpoch: branchEpoch }); await refreshed(); if (generation !== epoch || workspaceEpoch !== branchEpoch) return; notice('Branch choice saved. Its writing and history are kept. NOW is unchanged.');
+    try { await clearDraft(context, body); releaseRequest(context); if (JSON.stringify(branchBody()) === JSON.stringify(body)) { $('branch-dialog').close(); branchEditing = null; } }
+    catch (error) { cleanupOffer(context, body, 'branch-error', 'Branch choice saved.', () => { releaseRequest(context); $('branch-dialog').close(); branchEditing = null; }, () => !!branchEditing && JSON.stringify(branchBody()) === JSON.stringify(body)); }
+    if (routeFromHash() === route) showView(`branch/${body.branchId}`);
+  } catch (error) { if (generation === epoch) status('branch-error', `${error.message} Your status draft is kept.`); }
+  finally { branchSaving = false; for (const id of ['branch-status', 'branch-note', 'branch-evidence', 'save-branch-status', 'branch-base']) $(id).disabled = false; if (branchEditing) $('branch-evidence').disabled = !state.explorations.find(b => b.id === branchEditing.id)?.move; if (state) renderThread(); }
+};
 function focusArtifact() {
   if (!artifactFocusPending || !artifactSelection) return;
   requestAnimationFrame(() => {
+    if (!artifactFocusPending || !artifactSelection) return;
     const view = currentView === 'thread' ? $('view-thread') : $('view-spans');
     const card = [...view.querySelectorAll('[data-artifact-id]')].find(e => e.dataset.artifactId === artifactSelection);
     if (!card) return; artifactFocusPending = false; card.focus({ preventScroll: true }); card.scrollIntoView({ block: 'center' });
@@ -306,15 +437,15 @@ function proposalProvenance(capture) {
   for (const [heading, text] of [[`Distillation · ${distilled.type}`, distilled.text], [`Exploration · ${branch.dial}`, branch.text], ['Original source', original.text]]) lineage.append(element('h4', heading), element('pre', text, 'raw'));
   const open = element('button', 'Open source thread', 'text-button'); open.onclick = () => { if ($('source-dialog').open) $('source-dialog').close(); openThread(original.id); requestAnimationFrame(() => $(`branch-${branch.id}`)?.scrollIntoView({ block: 'center' })); }; lineage.append(open); box.append(lineage); return box;
 }
-const exploreBody = () => ({ ...explorationDraft, text: value('explore-text'), dial: $('explore-dial').value });
+const exploreBody = () => ({ ...explorationDraft, move: explorationDraft?.move ?? null, text: value('explore-text'), dial: $('explore-dial').value });
 const distillBody = () => ({ ...distillationDraft, text: value('distill-text'), type: $('distill-type').value });
 async function openExplore(sourceId, parent = null) {
   if (explorationSaving || explorationLoading || resetting) return;
   explorationLoading = true;
   const source = state.captures.find(c => c.id === sourceId); if (!source) { explorationLoading = false; return; }
   const returnData = { route: routeFromHash(), context: { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false }, expected: structuredClone(state.now), summary: displayTitle(source.text, 300) };
-  explorationDraft = { sourceId, parentId: parent?.id ?? null, returnPointId: parent?.returnPointId ?? null, returnData };
-  $('explore-text').disabled = $('explore-dial').disabled = true; $('save-exploration').disabled = true;
+  explorationDraft = { sourceId, parentId: parent?.id ?? null, returnPointId: parent?.returnPointId ?? null, returnData, move: null };
+  $('explore-text').disabled = $('explore-dial').disabled = $('explore-move').disabled = true; $('save-exploration').disabled = true;
   setValue('explore-text', ''); $('explore-dial').value = parent?.dial ?? 'NORMAL'; status('explore-error', ''); $('explore-dialog').showModal();
   try {
     const saved = await loadContext(`explore:${sourceId}`);
@@ -322,6 +453,7 @@ async function openExplore(sourceId, parent = null) {
   } catch (e) { status('explore-error', `${e.message} Copy writing before leaving.`); }
   const ancestor = state.explorations?.find(b => b.id === explorationDraft.parentId);
   $('explore-parent').textContent = ancestor ? `Branching from: ${displayTitle(ancestor.text, 150)}` : `From: ${displayTitle(source.text, 150)}`;
+  if (explorationDraft.move === undefined) explorationDraft.move = null; populateMovePicker(); $('explore-current-place').hidden = !!explorationDraft.parentId; $('explore-move').disabled = false;
   explorationLoading = false; $('explore-text').disabled = $('explore-dial').disabled = false; $('save-exploration').disabled = false; $('explore-text').focus();
 }
 async function openDistill(branch) {
@@ -349,11 +481,11 @@ $('explore-form').onsubmit = async event => {
     let returnPointId = body.returnPointId;
     if (!returnPointId) { const place = await store.holdPlace({ ...body.returnData, nextAction: '' }, { requestId: requestId(`${context}:return`, body.returnData), expectedEpoch }); returnPointId = place.id; }
     if (generation !== epoch) throw Error('The workspace changed. Your branch was not added.');
-    const record = await store.explore({ sourceId: body.sourceId, parentId: body.parentId, returnPointId, text: body.text, dial: body.dial }, { requestId: requestId(context, body), expectedEpoch });
+    const record = await store.explore({ sourceId: body.sourceId, parentId: body.parentId, returnPointId, text: body.text, dial: body.dial, move: body.move }, { requestId: requestId(context, body), expectedEpoch });
     if (generation !== epoch) return;
     notice('Branch kept. Your chosen NOW is unchanged.');
-    try { await clearDraft(context, body); releaseRequest(context); if (JSON.stringify(exploreBody()) === JSON.stringify(body)) { setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; } }
-    catch (e) { cleanupOffer(context, body, 'explore-error', 'Branch kept.', () => { releaseRequest(context); setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; }, () => !!explorationDraft && JSON.stringify(exploreBody()) === JSON.stringify(body)); }
+    try { await clearDraft(context, body); releaseRequest(context); releaseRequest(`${context}:return`); if (JSON.stringify(exploreBody()) === JSON.stringify(body)) { setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; } }
+    catch (e) { cleanupOffer(context, body, 'explore-error', 'Branch kept.', () => { releaseRequest(context); releaseRequest(`${context}:return`); setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; }, () => !!explorationDraft && JSON.stringify(exploreBody()) === JSON.stringify(body)); }
     await refreshed(); openThread(record.sourceId); $(`branch-${record.id}`)?.scrollIntoView({ block: 'center' });
   } catch (e) { status('explore-error', `${e.message} Your writing is still here.`); }
   finally { explorationSaving = false; for (const id of ['explore-text', 'explore-dial', 'save-exploration']) $(id).disabled = false; }
@@ -439,6 +571,7 @@ function refreshed() {
       const file = state.artifacts?.find(a => a.id === artifactSelection), source = file && state.captures.find(c => c.id === file.captureId);
       if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false);
     }
+    if (branchSelection) { const branch = state.explorations?.find(b => b.id === branchSelection), source = branch && state.captures.find(c => c.id === branch.sourceId); if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false); }
     render();
     $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
     const damagedOriginals = state.recovery.filter(record => record.source !== 'draft').length, draftCopies = state.recovery.length - damagedOriginals;
@@ -478,7 +611,7 @@ async function resumeSavedPlace(place, button) {
     state = result.state; render();
     if (result.alreadyHandled) { notice('This return point was already handled. Your current work is unchanged.'); return; }
     if (!closeOnly) {
-      showView(result.route); $('span-search').value = place.context.spanSearch; renderSpans();
+      showView(result.route); artifactFocusPending = false; branchFocusPending = false; $('span-search').value = place.context.spanSearch; renderSpans();
       const source = document.querySelector('#thread-post .original-disclosure'); if (source) source.open = place.context.sourceExpanded;
       requestAnimationFrame(() => scrollTo(0, place.context.scrollY));
     }
@@ -546,6 +679,7 @@ function renderSpanDepth(span) {
     }
     if (!completed.length) body.append(element('p', 'No completion receipts yet. When you mark a chosen step done, its receipt will appear here.', 'empty'));
   }
+  if (span.kind === 'moves') renderMoves(body);
   if (span.kind === 'workspace') {
     const library = element('details', undefined, 'panel file-library'); library.open = !!artifactSelection; library.append(element('summary', state.fileWarning ? 'Connected files unavailable' : `Connected files (${(state.artifacts ?? []).length})`), element('p', 'Exact files, linked to their source thoughts. Files with a damaged source stay downloadable here.', 'small'));
     for (const row of (state.artifacts ?? []).slice().sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id))) library.append(artifactCard(row));
@@ -661,14 +795,14 @@ async function replaceDemo(samples) {
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
     ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
-    artifactTarget = null; artifactSelection = null; $('artifact-file').value = ''; status('artifact-error', '');
+    artifactTarget = null; artifactSelection = null; branchSelection = null; moveEditing = null; branchEditing = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
-    for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name', 'explore-text', 'distill-text']) $(id).value = '';
+    for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name', 'explore-text', 'distill-text', 'move-name', 'move-prompt', 'branch-note']) $(id).value = '';
     for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
-    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog', 'artifact-dialog']) if ($(id).open) $(id).close();
+    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog', 'artifact-dialog', 'move-dialog', 'branch-dialog']) if ($(id).open) $(id).close();
     workspaceEpoch = (await store.health()).epoch; fenced = false;
     try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }
     await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but draft storage or cleanup failed. Check Engine Room before writing.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private EFFORT app is separate.', !!draftCleanupError);
@@ -676,7 +810,7 @@ async function replaceDemo(samples) {
 }
 $('sample-reset').onclick = () => replaceDemo(true); $('reset').onclick = () => replaceDemo(false);
 function addDraftDownloads(item, body) {
-  for (const [key, label] of [['text', 'writing'], ['name', 'name'], ['note', 'note'], ['summary', 'summary'], ['nextAction', 'return note']]) {
+  for (const [key, label] of [['text', 'writing'], ['name', 'name'], ['prompt', 'prompt'], ['note', 'note'], ['summary', 'summary'], ['nextAction', 'return note']]) {
     if (typeof body?.[key] !== 'string') continue;
     const button = element('button', `Download ${label} as text`, 'text-button');
     button.onclick = () => downloadText(body[key], `effort-draft-${key}.txt`, 'text/plain'); item.append(button);
@@ -709,7 +843,7 @@ try {
   try {
     shelf = createDraftShelf(); await shelf.ready;
     const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); $('capture-span').value = draft.body.span; }
-    else if ((await shelf.list()).records.some(record => record.body.text || record.body.name || record.body.note || record.body.summary || record.body.nextAction)) notice('Unfinished writing is available in Engine Room → Draft recovery.');
+    else if ((await shelf.list()).records.some(record => record.body.text || record.body.name || record.body.note || record.body.summary || record.body.nextAction || record.body.prompt || record.body.status)) notice('Unfinished writing is available in Engine Room → Draft recovery.');
   } catch (error) {
     await shelf?.close().catch(() => {}); shelf = null; const recovered = recoverLegacyCapture();
     status('draft-state', `Draft storage could not open: ${error.message}. ${recovered ? 'A legacy copy is visible here; copy it before leaving.' : 'Writing is only kept in this window. Copy it before leaving.'} Original saving is available.`);
@@ -728,11 +862,13 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving) throw Error('Wait for the current save or view to finish.');
+  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
   if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {
     const pending = [['capture', captureBody()]];
+    if (moveEditing) pending.push([moveContext(), moveBody()]);
+    if (branchEditing) pending.push([`branch:${branchEditing.id}`, branchBody()]);
     if (explorationDraft) pending.push([`explore:${explorationDraft.sourceId}`, exploreBody()]);
     if (distillationDraft) pending.push([`distill:${distillationDraft.explorationId}`, distillBody()]);
     if (threadId) pending.push([`reply:${threadId}`, replyBody()]);

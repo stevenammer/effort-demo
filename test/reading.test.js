@@ -32,6 +32,6 @@ test('sentence-ending URL punctuation stays visible and a heading marker require
 
 test('source-linked thought and file routes are local links while malformed routes remain literal', () => {
   const id = '12345678-1234-4123-8123-123456789abc';
-  for (const kind of ['thread', 'artifact']) { const url = `#${kind}/${id}`; assert.equal(readingLink(url), url); assert.deepEqual(inline(`[Reference](${url})`), [{ type: 'link', text: 'Reference', url }]); }
+  for (const kind of ['thread', 'artifact', 'branch']) { const url = `#${kind}/${id}`; assert.equal(readingLink(url), url); assert.deepEqual(inline(`[Reference](${url})`), [{ type: 'link', text: 'Reference', url }]); }
   for (const value of ['#artifact/no-id', `#artifact/${id}/../engine`, `#artifact/${id}?url=javascript:alert`, '#engine', '#thread/javascript:alert']) { assert.equal(readingLink(value), null); assert.equal(inline(`[Unsafe](${value})`).some(token => token.type === 'link'), false); }
 });

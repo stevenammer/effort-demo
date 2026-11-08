@@ -3,7 +3,7 @@
 // This is deliberately a display-only, lossless-ish reader. It never changes the
 // stored string: callers keep the original and render these tokens instead.
 const SAFE_URL = /^https?:\/\/[^\s<>()]+$/i;
-const LOCAL_URL = /^#(?:thread|artifact)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const LOCAL_URL = /^#(?:thread|artifact|branch)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const BARE_URL = /https?:\/\/[^\s<>()]+/g;
 const LIST = /^(\s*)([-*+])\s+(.+)$/;
 const ORDERED = /^(\s*)(\d+)[.)]\s+(.+)$/;

@@ -76,14 +76,14 @@ class Storage {
 const bundle = async payload => JSON.stringify({ payload, sha256: await sha256(JSON.stringify(payload)) });
 async function close(x) { await x.store.close(); await x.db.close(); }
 
-test('version 8 backup restores nested branches, typed distillation and drafts idempotently', async () => {
+test('version 9 backup restores nested branches, typed distillation and drafts idempotently', async () => {
   const a = await setup(), state = await a.store.read();
   const branch = await a.store.explore({ sourceId: a.sourceId, returnPointId: a.returnPointId, dial: 'WILD', text: 'First branch.' });
   const child = await a.store.explore({ sourceId: a.sourceId, parentId: branch.id, returnPointId: a.returnPointId, dial: 'TIGHT', text: 'A child branch.' });
   await a.store.distill({ explorationId: child.id, type: 'OPEN TENSION', text: 'My question remains open.' });
   const shelf = createDraftShelf({ database: a.db, localStorage: new Storage(), sessionStorage: new Storage(), locks: null });
   const draft = await shelf.save(`distill:${child.id}`, { explorationId: child.id, type: 'HYPOTHESIS', text: 'Unfinished thought.' });
-  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 8);
+  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 9);
   const b = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false });
   await b.restore(backup); await b.restore(backup); const restored = await b.read();
   assert.deepEqual(restored.explorations, (await a.store.read()).explorations); assert.deepEqual(restored.distillations, (await a.store.read()).distillations);
@@ -130,7 +130,7 @@ test('concurrent branch and distillation retries deduplicate and readback failur
 
 test('a version 5 backup migrates with empty exploration arrays', async () => {
   const a = await setup(), payload = JSON.parse(await a.store.exportData()).payload;
-  payload.version = 5; delete payload.explorations; delete payload.distillations; delete payload.artifacts;
+  payload.version = 5; delete payload.explorations; delete payload.distillations; delete payload.artifacts; delete payload.branchEvents; delete payload.moveEvents;
   const b = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }); await b.restore(await bundle(payload));
   const state = await b.read(); assert.deepEqual(state.explorations, []); assert.deepEqual(state.distillations, []); assert.deepEqual(state.captures, payload.captures);
   await close(a); await b.close();

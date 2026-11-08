@@ -127,7 +127,7 @@ test('the database upgrade retains pre-draft originals, spans and intent history
     tx.oncomplete=resolve; tx.onabort=()=>reject(tx.error);
   }); db.close();
   const upgraded = createStore({indexedDB:factory, legacyStorage:null, broadcast:false});
-  const state = await upgraded.read(); assert.equal(state.version,8);
+  const state = await upgraded.read(); assert.equal(state.version,9);
   assert.deepEqual(state.captures, old.captures); assert.deepEqual(state.intentEvents,old.intentEvents); assert.deepEqual(state.now,old.now); assert.equal(state.spans.length,old.spans.length);
   await upgraded.close();
 });

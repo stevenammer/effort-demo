@@ -1,4 +1,4 @@
-// Upgrade an actual published DB5 client to DB6 while a second old tab keeps writing.
+// Upgrade an actual published DB5 client to DB7 while a second old tab keeps writing.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
@@ -22,12 +22,12 @@ try{
  await a.locator('#capture-open').click();await a.locator('#capture-text').fill('First old tab draft.');await a.locator('#draft-state').getByText('Draft kept in this browser.',{exact:true}).waitFor();await a.getByRole('button',{name:'Close capture',exact:true}).click();
  const b=await c.newPage();await b.goto(base+'/public/');await ready(b);await b.locator('#capture-open').click();await b.locator('#capture-text').fill('Second old tab draft.');await b.locator('#draft-state').getByText('Draft kept in this browser.',{exact:true}).waitFor();
  files=current;await a.evaluate(async()=>{const reg=await navigator.serviceWorker.getRegistration();await reg.update();});await a.locator('#apply-update').waitFor({state:'visible'});
- await Promise.all([a.waitForEvent('load'),a.locator('#apply-update').click()]);await ready(a);assert.equal(await a.evaluate(async()=>{const {DB_VERSION}=await import('./database.js');return DB_VERSION;}),6);
+ await Promise.all([a.waitForEvent('load'),a.locator('#apply-update').click()]);await ready(a);assert.equal(await a.evaluate(async()=>{const {DB_VERSION}=await import('./database.js');return DB_VERSION;}),7);
  await a.locator('#capture-open').click();assert.equal(await a.locator('#capture-text').inputValue(),'First old tab draft.');await a.getByRole('button',{name:'Close capture',exact:true}).click();
  // The stale tab cannot write to the upgraded database, but its synchronous mirror retains new typing.
  await b.locator('#capture-text').fill('Late writing in the second old tab after the schema upgrade.');await b.locator('#draft-state').getByText(/older than the saved EFFORT workspace/).waitFor();
  assert.equal(await b.locator('#capture-text').inputValue(),'Late writing in the second old tab after the schema upgrade.');await b.reload();await ready(b);await b.locator('#capture-open').click();assert.equal(await b.locator('#capture-text').inputValue(),'Late writing in the second old tab after the schema upgrade.');await b.locator('#save-capture').click();await b.locator('#capture-dialog').waitFor({state:'hidden'});
- const state=await b.evaluate(async()=>{const {createStore}=await import('./store.js');const s=createStore();try{return await s.read();}finally{await s.close();}});assert.ok(state.captures.some(x=>x.text==='Late writing in the second old tab after the schema upgrade.'));assert.equal(state.version,8);assert.deepEqual(state.artifacts,[]);
+ const state=await b.evaluate(async()=>{const {createStore}=await import('./store.js');const s=createStore();try{return await s.read();}finally{await s.close();}});assert.ok(state.captures.some(x=>x.text==='Late writing in the second old tab after the schema upgrade.'));assert.equal(state.version,9);assert.deepEqual(state.artifacts,[]);
  const workerVersion=await a.evaluate(()=>new Promise(resolve=>{const channel=new MessageChannel();channel.port1.onmessage=e=>{channel.port1.close();resolve(e.data.version);};navigator.serviceWorker.controller.postMessage({type:'SHELL_STATUS'},[channel.port2]);}));assert.equal(workerVersion,SHELL_VERSION);
- assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);console.log('PASS: real published DB5/service-worker upgrade to DB6; two separate tab drafts preserved; stale-tab writes retained in emergency mirror; deliberate reload recovers exact late typing; primary capture works after upgrade.');
+ assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);console.log('PASS: real published DB5/service-worker upgrade to DB7; two separate tab drafts preserved; stale-tab writes retained in emergency mirror; deliberate reload recovers exact late typing; primary capture works after upgrade.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

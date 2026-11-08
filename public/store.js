@@ -1,10 +1,11 @@
+import { createThinking, THINKING_TABLES, validateThinkingState } from './thinking.js';
 import { createArtifacts, validateArtifactState, sameArtifactFile } from './artifacts.js';
 import { createExploration, EXPLORATION_TABLES, validateExplorationState, validateProposalProvenance } from './exploration.js';
 import { stableId } from './primitives.js';
 import { validateDraft, DRAFT_LIMITS, DRAFT_RESET_MARKER, markDraftReset } from './drafts.js';
 import { createContinuity } from './continuity-store.js';
-import { INTENT_TABLES, seal } from './intent.js';
-import { makeSpan, initialSpans, spanKey, validSpan, validSpanName } from './spans.js';
+import { INTENT_TABLES, seal, validateIntentState } from './intent.js';
+import { makeSpan, initialSpans, spanKey, validSpan, validSpanName, validateThreadLinks } from './spans.js';
 import { openDatabase, request, TABLES } from './database.js';
 import { KEY, LIMITS, SPANS, blank, clone, same, exactKeys, textAllowed, sha256, validChoice,
   validateCapture, validateState, recoveryRecord, validHash, validId, IntegrityError } from './records.js';
@@ -190,21 +191,35 @@ export function createStore(options = {}) {
       for (const row of bad) await request(tx.objectStore('quarantine').put(row));
     });
   }
-  async function read({ includeDrafts = true, requireArtifacts = false } = {}) {
+  async function read({ includeDrafts = true, requireArtifacts = false, requireThinking = false, integrityRetry = false } = {}) {
     await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); await recoverProposalProvenance();
-    let fileError;
+    let fileError, thinkingError;
+    try { await thinking.repair(); } catch (error) { thinkingError = error; }
     try { await artifacts.repair(); } catch (error) { fileError = error; }
     if (includeDrafts) await recoverDrafts();
-    const snapshot = files => db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES, ...EXPLORATION_TABLES, ...(files ? ['artifacts'] : [])], 'readonly', async tx => {
-      const captures = await request(tx.objectStore('captures').getAll());
-      captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-      return { ...blank(), artifacts: files ? await request(tx.objectStore('artifacts').getAll()) : [], captures, now: (await meta(tx, 'now')) ?? null,
-        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [] };
+    const optionalRows = async (tx, table, feature) => { try { return await request(tx.objectStore(table).getAll()); } catch (error) { const failure = Error(error.message); failure.optionalFeature = feature; throw failure; } };
+    const snapshot = (files, thoughts) => db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES, ...EXPLORATION_TABLES, ...(files ? ['artifacts'] : []), ...(thoughts ? THINKING_TABLES : [])], 'readonly', async tx => {
+      const captures = await request(tx.objectStore('captures').getAll()); captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+      return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null, recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [], artifacts: files ? await optionalRows(tx, 'artifacts', 'files') : [], branchEvents: thoughts ? await optionalRows(tx, 'branchEvents', 'thinking') : [], moveEvents: thoughts ? await optionalRows(tx, 'moveEvents', 'thinking') : [] };
     });
-    if (!fileError) { try { const complete = await snapshot(true); await validateArtifactState(complete); return complete; } catch (error) { fileError = error; } }
-    if (requireArtifacts) throw Error(`Connected files are unavailable, so a complete backup cannot be prepared: ${fileError.message}`);
-    const primary = await snapshot(false);
-    return { ...primary, fileWarning: `Connected files are unavailable: ${fileError.message} Your thoughts and NOW remain usable. Files haven't been removed.` };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (fileError && requireArtifacts) throw Error(`Connected files are unavailable, so a complete backup cannot be prepared: ${fileError.message}`);
+      if (thinkingError && requireThinking) throw Error(`Thinking history is unavailable, so a complete backup cannot be prepared: ${thinkingError.message}`);
+      let complete;
+      try { complete = await snapshot(!fileError, !thinkingError); } catch (error) { if (error.optionalFeature === 'files') { fileError = error; continue; } if (error.optionalFeature === 'thinking') { thinkingError = error; continue; } throw error; }
+      try {
+        for (const capture of complete.captures) await validateCapture(capture);
+        if (new Set(complete.captures.map(c => c.id)).size !== complete.captures.length || complete.spans.some(span => !validSpan(span)) || complete.captures.some(c => !complete.spans.some(span => span.id === spanKey(c.span)))) throw new IntegrityError('The source directory could not be verified.');
+        validateThreadLinks(complete.captures, complete.recovery); await validateIntentState(complete); await validateExplorationState(complete);
+        for (const capture of complete.captures) await validateProposalProvenance(capture, complete);
+      } catch (error) { if (!integrityRetry) return read({ includeDrafts, requireArtifacts, requireThinking, integrityRetry: true }); throw Error(`Source verification failed during reading: ${error.message} Your saved records haven't been removed.`); }
+      if (!thinkingError) { try { await validateThinkingState(complete); } catch (error) { thinkingError = error; continue; } }
+      if (!fileError) { try { await validateArtifactState(complete); } catch (error) { fileError = error; continue; } }
+      if (fileError) complete.fileWarning = `Connected files are unavailable: ${fileError.message} Your thoughts and NOW remain usable. Files haven't been removed.`;
+      if (thinkingError) complete.thinkingWarning = `Thinking history is unavailable: ${thinkingError.message} Your original thoughts and NOW remain usable. History hasn't been removed.`;
+      return complete;
+    }
+    throw Error('The workspace changed while reading its optional records. Retry with your writing kept.');
   }
   async function health() {
     await ready();
@@ -262,7 +277,7 @@ export function createStore(options = {}) {
       for (const record of state.recovery) await request(tx.objectStore('quarantine').put(record));
       for (const span of state.spans) await request(tx.objectStore('spans').put(span));
       for (const draft of state.drafts) await request(tx.objectStore('drafts').put(draft));
-      for (const table of [...INTENT_TABLES, ...EXPLORATION_TABLES, 'artifacts']) for (const row of state[table]) await request(tx.objectStore(table).put(row));
+      for (const table of [...INTENT_TABLES, ...EXPLORATION_TABLES, ...THINKING_TABLES, 'artifacts']) for (const row of state[table]) await request(tx.objectStore(table).put(row));
       await setMeta(tx, 'intentInitialized', true); await setMeta(tx, 'draftLegacyClosed', true);
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false); await setMeta(tx, 'epoch', epoch);
       await setMeta(tx, 'initialized', true); await setMeta(tx, 'legacyChecked', true);
@@ -273,7 +288,7 @@ export function createStore(options = {}) {
   }
   async function reset() { return replace(blank()); }
   async function exportData({ draftCopies = [] } = {}) {
-    const payload = await read({ requireArtifacts: true });
+    const payload = await read({ requireArtifacts: true, requireThinking: true });
     if (!Array.isArray(draftCopies) || draftCopies.length > 1000) throw Error('Too many emergency draft copies for one backup.');
     for (const copy of draftCopies) {
       if (copy.raw === null || copy.raw === undefined) continue;
@@ -302,6 +317,10 @@ export function createStore(options = {}) {
       mergedExploration[table] = [...merged.values()];
     }
     await validateExplorationState({ ...incoming, captures: [...continuityPlan.saved.captures, ...incoming.captures.filter(c => !continuityPlan.saved.captures.some(old => old.id === c.id))], places: [...continuityPlan.saved.places, ...incoming.places.filter(p => !continuityPlan.saved.places.some(old => old.id === p.id))], ...mergedExploration });
+    const currentThinking = await db.run(THINKING_TABLES, 'readonly', async tx => Object.fromEntries(await Promise.all(THINKING_TABLES.map(async table => [table, await request(tx.objectStore(table).getAll())]))));
+    const mergedThinking = {};
+    for (const table of THINKING_TABLES) { const rows = new Map(currentThinking[table].map(row => [row.id, row])); for (const row of incoming[table]) { if (rows.has(row.id) && !same(rows.get(row.id), row)) throw Error('Thinking history conflicts. Nothing was changed.'); rows.set(row.id, row); } mergedThinking[table] = [...rows.values()]; }
+    await validateThinkingState({ ...mergedThinking, explorations: mergedExploration.explorations, recovery: [...continuityPlan.saved.recovery, ...incoming.recovery] });
     const currentArtifacts = await db.run(['artifacts'], 'readonly', tx => request(tx.objectStore('artifacts').getAll()));
     incoming = { ...incoming, artifacts: incoming.artifacts.map(row => { const prior = currentArtifacts.find(old => old.id === row.id); return prior && sameArtifactFile(prior, row) ? prior : row; }) };
     const mergedArtifacts = new Map(currentArtifacts.map(row => [row.id, row]));
@@ -324,7 +343,7 @@ export function createStore(options = {}) {
       } else draftAdds.push(draft);
     }
     if (currentDrafts.length + draftAdds.length > DRAFT_LIMITS.records || JSON.stringify([...currentDrafts, ...draftAdds]).length > DRAFT_LIMITS.total) throw Error('Restored drafts would exceed the local draft limit. Nothing was changed.');
-    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES, ...EXPLORATION_TABLES, 'artifacts'], 'readwrite', async tx => {
+    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES, ...EXPLORATION_TABLES, ...THINKING_TABLES, 'artifacts'], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset during restore. Reopen the backup before trying again.');
       if (!same(await request(tx.objectStore('drafts').getAll()), currentDrafts)) throw Error('A draft changed during restore. Retry with your writing kept.');
       for (const draft of draftAdds) await request(tx.objectStore('drafts').add(draft));
@@ -334,6 +353,7 @@ export function createStore(options = {}) {
         if (!same(await request(tx.objectStore(table).getAll()), currentExploration[table])) throw Error('Exploration changed during restore. Retry with your writing kept.');
         for (const row of incoming[table]) if (!await request(tx.objectStore(table).get(row.id))) await request(tx.objectStore(table).add(row));
       }
+      for (const table of THINKING_TABLES) { if (!same(await request(tx.objectStore(table).getAll()), currentThinking[table])) throw Error('Thinking changed during restore. Retry with your writing kept.'); for (const row of incoming[table]) if (!await request(tx.objectStore(table).get(row.id))) await request(tx.objectStore(table).add(row)); }
       if (!same(await request(tx.objectStore('artifacts').getAll()), currentArtifacts)) throw Error('Files changed during restore. Retry with your originals kept.');
       for (const row of incoming.artifacts) if (!await request(tx.objectStore('artifacts').get(row.id))) await request(tx.objectStore('artifacts').add(row));
       const captures = tx.objectStore('captures'); const existing = await request(captures.getAll()); const missing = [];
@@ -364,6 +384,7 @@ export function createStore(options = {}) {
       const restored = await db.run(['artifacts'], 'readonly', tx => Promise.all(incoming.artifacts.map(row => request(tx.objectStore('artifacts').get(row.id)))));
       if (restored.some((row, index) => !same(row, incoming.artifacts[index]))) throw Error('The restored file differs from its saved source.');
     } catch (error) { notify(); throw Error(`File restore could not be verified: ${error.message} Keep the backup and retry; existing originals weren't overwritten.`); }
+    try { for (const table of THINKING_TABLES) { const rows = await db.run([table], 'readonly', tx => Promise.all(incoming[table].map(row => request(tx.objectStore(table).get(row.id))))); if (rows.some((row, index) => !same(row, incoming[table][index]))) throw Error('A restored thinking record differs from its source.'); } } catch (error) { notify(); throw Error(`Thinking restore could not be verified: ${error.message} Keep the backup and retry.`); }
     notify(); return added;
   }
   async function seed(force = false) {
@@ -388,6 +409,7 @@ export function createStore(options = {}) {
   const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
   const exploration = createExploration({ db, ready, notify, recoveryRecord, ensureCapacity });
   const artifacts = createArtifacts({ db, ready, notify, recoveryRecord });
-  return { ...continuity, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
+  const thinking = createThinking({ db, ready, notify, recoveryRecord });
+  return { ...continuity, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

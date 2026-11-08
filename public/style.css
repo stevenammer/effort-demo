@@ -883,3 +883,14 @@ textarea {
 input[type=file] { max-width:100%; min-width:0; }
 
 .file-reference code { display:block; overflow-wrap:anywhere; white-space:pre-wrap; padding:.7rem 0; user-select:all; }
+
+.thinking-controls { margin:1rem 0; }
+.thinking-controls .raw,.saved-move .raw,.move-history .raw,#move-current,#branch-current { max-height:16rem; overflow:auto; }
+.move-card { margin:1rem 0; }
+.move-card h3 { overflow-wrap:anywhere; }
+.check-label { display:flex; gap:.7rem; align-items:flex-start; margin:1rem 0; }
+.check-label input[type=checkbox] { width:auto; min-width:1rem; margin:.2rem 0 0; }
+.branch-status { display:inline-block; margin:.7rem 0; }
+.branch-history,.saved-move,.branch-promotion { margin:.8rem 0; }
+.selected-branch { outline:1px solid #a99ae8; }
+.set-aside-branches { margin:1rem 0; }
