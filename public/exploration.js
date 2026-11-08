@@ -159,13 +159,17 @@ export function createExploration({ db, ready = async () => {}, notify = () => {
     const source = state.captures.find(row => row.id === branch.sourceId), place = state.places.find(row => row.id === branch.returnPointId);
     if (!source || !place) throw Error('The exploration provenance needs recovery.');
     await validateCapture(source); await validatePlace(place, state.captures, state.recovery);
-    const id = await stableId(JSON.stringify(['proposal', state.epoch ?? null, distillationId]));
+    const previous = state.captures.filter(c => c.derivedFromId === distillationId);
+    if (previous.length > 1) throw Error('Multiple proposal copies need review in source recovery before preparing another.');
+    if (previous[0]) { await validateCapture(previous[0]); if (validateProposalProvenance(previous[0], state) !== 'verified') throw Error('The earlier proposal needs source recovery before preparing it again.'); }
+    const id = previous[0]?.id ?? await stableId(JSON.stringify(['proposal', state.epoch ?? null, distillationId]));
     const payload = { id, text: distillation.text, hash: await sha256(distillation.text), createdAt: new Date().toISOString(), span: source.span, sample: false, parentId: source.id, derivedFromId: distillationId };
     const record = { ...payload, derivedHash: await sha256(JSON.stringify(payload)) };
     const matches = row => row.id === id && row.text === record.text && row.hash === record.hash && row.span === record.span && row.sample === false && row.parentId === record.parentId && row.derivedFromId === distillationId;
     const actual = await db.run(['meta', 'captures', 'places', 'spans', ...EXPLORATION_TABLES], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== state.epoch) throw Error('The workspace changed. Reopen the distillation before preparing a proposal.');
       const captures = tx.objectStore('captures'), prior = await request(captures.get(id));
+      for (const [table, row] of [['captures', source], ['places', place], ['explorations', branch], ['distillations', distillation]]) if (!same(await request(tx.objectStore(table).get(row.id)), row)) throw Error('The proposal source changed. Reopen the distillation before preparing it.');
       if (prior) { if (!matches(prior)) throw Error('This proposal ID belongs to different saved writing. Nothing was changed.'); return prior; }
       for (const name of ['captures', 'places', ...EXPLORATION_TABLES]) if (!same(await request(tx.objectStore(name).getAll()), state[name])) throw Error('The exploration changed. Refresh before preparing a proposal.');
       if (!validSpan(await request(tx.objectStore('spans').get(spanKey(source.span))))) throw Error('The source Attention Span needs recovery.');
@@ -173,9 +177,12 @@ export function createExploration({ db, ready = async () => {}, notify = () => {
       ensureCapacity(state.captures, [record]);
       await request(captures.add(record)); await request(tx.objectStore('meta').put({ key: 'initialized', value: true })); return record;
     });
-    const verified = await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(id)));
-    await validateCapture(verified);
-    if (!same(verified, actual) || !matches(verified)) throw Error('The proposal could not be read back exactly. Keep the distillation and retry.');
+    let verified;
+    try {
+      verified = await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(id)));
+      await validateCapture(verified);
+      if (!same(verified, actual) || !matches(verified)) throw Error('The saved proposal differs from its readback.');
+    } catch (error) { notify(); throw Error(`The proposal could not be read back exactly: ${error.message} Your distillation is kept. Retry to check the saved proposal.`); }
     notify(); return verified;
   }
   return { explore, distill, repair, prepareProposal };

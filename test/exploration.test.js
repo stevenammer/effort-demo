@@ -237,3 +237,38 @@ test('proposal metadata edits are detected and the raw altered record remains re
   assert.deepEqual(JSON.parse(state.recovery.find(r => r.source === 'capture' && r.recordId === proposal.id).raw), tampered);
   await close(x);
 });
+
+
+test('preparing an imported proposal reuses its exact saved capture across workspace epochs', async () => {
+  const x = await proposalSetup(), proposal = await x.store.prepareProposal({ distillationId: x.distillation.id });
+  const backup = await x.store.exportData(); await x.store.reset(); await x.store.restore(backup);
+  const again = await x.store.prepareProposal({ distillationId: x.distillation.id });
+  assert.deepEqual(again, proposal); assert.equal((await x.store.read()).captures.filter(c => c.derivedFromId === x.distillation.id).length, 1);
+  await close(x);
+});
+
+test('a proposal hashed before a reset cannot resurrect its old writing', async () => {
+  const x = await proposalSetup(), original = globalThis.crypto, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  let release, entered; const gate = new Promise(r => { release = r; }), started = new Promise(r => { entered = r; }); let blocked = false;
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: original.randomUUID.bind(original), subtle: { digest: async (...args) => { if (!blocked) { blocked = true; entered(); await gate; } return original.subtle.digest(...args); } } } });
+  try {
+    const pending = x.store.prepareProposal({ distillationId: x.distillation.id });
+    await started; await x.store.reset(); release(); await assert.rejects(pending, /workspace changed/);
+  } finally { release(); Object.defineProperty(globalThis, 'crypto', descriptor); }
+  const state = await x.store.read(); assert.deepEqual(state.captures, []); assert.equal(state.now, null); await close(x);
+});
+
+test('retry refuses source changes while the saved proposal is being verified', async () => {
+  const x = await proposalSetup(), proposal = await x.store.prepareProposal({ distillationId: x.distillation.id });
+  const original = globalThis.crypto, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  let release, entered; const gate = new Promise(r => { release = r; }), started = new Promise(r => { entered = r; }); let blocked = false;
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: original.randomUUID.bind(original), subtle: { digest: async (...args) => { if (!blocked) { blocked = true; entered(); await gate; } return original.subtle.digest(...args); } } } });
+  try {
+    const pending = x.store.prepareProposal({ distillationId: x.distillation.id });
+    await started;
+    await x.db.run(['captures'], 'readwrite', async tx => { const table = tx.objectStore('captures'), source = await request(table.get(x.sourceId)); await request(table.put({ ...source, text: 'Changed without its checksum.' })); });
+    release(); await assert.rejects(pending, /source changed/);
+  } finally { release(); Object.defineProperty(globalThis, 'crypto', descriptor); }
+  const state = await x.store.read(); assert.deepEqual(state.captures.find(c => c.id === proposal.id), proposal); assert.ok(state.recovery.some(row => row.source === 'capture' && row.recordId === x.sourceId));
+  await x.store.exportData(); await close(x);
+});

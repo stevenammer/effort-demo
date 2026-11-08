@@ -206,7 +206,9 @@ try {
   await offlinePage.locator('[data-view="engine"]').click();
   await offlinePage.locator('#offline-status').getByText('Available offline in this browser.', { exact: false }).waitFor();
   await offlineContext.setOffline(true); await offlinePage.reload();
-  await offlinePage.locator('#now-title').waitFor();
+  await offlinePage.locator('#view-engine').waitFor();
+  await offlinePage.locator('[data-view="home"]').click();
+  await offlinePage.locator('#now-title').getByText("I'll review the workshop outline before lunch.", { exact: true }).waitFor();
   assert.equal(await offlinePage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'offline shell layout overflow');
   await offlineContext.close();
   assert.deepEqual(errors, []);

@@ -1,4 +1,4 @@
-import { EXPLORATION_DIALS, DISTILLATION_TYPES } from './exploration.js';
+import { EXPLORATION_DIALS, DISTILLATION_TYPES, validateProposalProvenance } from './exploration.js';
 import { setupOffline } from './offline.js';
 import { renderReading, readablePreview } from './reading.js';
 import { deriveCommitments } from './intent.js';
@@ -18,6 +18,7 @@ const label = { action_candidate: 'Possible action', explicit_commitment: 'State
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let shelf, workspaceEpoch, fenced = false, resetting = false;
 let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
+const proposalPending = new Set();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
 const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
 function setValue(id, text) { $(id).value = text; shadows.set(id, text); }
@@ -149,6 +150,7 @@ function renderThread() {
   const display = element('details', undefined, 'original-disclosure'); display.append(element('summary', 'Read the exact original'), element('pre', root.text, 'raw'), element('p', `Original verified · SHA-256 ${root.hash}`, 'small'));
   const download = element('button', 'Download original text', 'text-button'); download.onclick = () => downloadText(root.text, `effort-original-${root.id}.txt`, 'text/plain'); display.append(download);
   main.append(renderReading(root.text, { titleAlreadyShown: displayTitle(root.text, 110) }), display);
+  const rootProvenance = proposalProvenance(root); if (rootProvenance) main.append(rootProvenance);
   const grouping = element('details', undefined, 'organized-disclosure'); grouping.append(element('summary', 'See organized details'), organized(root, false)); main.append(grouping);
   const actions = element('div', undefined, 'post-actions');
   const choose = element('button', 'Choose a next step…', 'quiet'); choose.onclick = () => openSource(root.id, false);
@@ -165,6 +167,7 @@ function renderThread() {
   $('thread-replies').replaceChildren(...rows.map(({ capture, depth }) => {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
     card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
+    const provenance = proposalProvenance(capture); if (provenance) card.append(provenance);
     const actions = element('div', undefined, 'post-actions'); const button = element('button', 'Reply to this', 'text-button'); button.onclick = () => targetReply(capture.id);
     const source = element('button', 'Original ↗', 'text-button'); source.onclick = () => openSource(capture.id, true);
     const permalink = element('a', 'Permalink', 'small'); permalink.href = `#thread/${capture.id}`;
@@ -204,11 +207,39 @@ function renderExplorations(root) {
       const raw = element('details', undefined, 'original-disclosure'); raw.append(element('summary', 'Read exact distillation writing'), element('pre', item.text, 'raw'));
       const download = element('button', 'Download distillation text', 'text-button'); download.onclick = () => downloadText(item.text, `effort-distillation-${item.id}.txt`, 'text/plain'); raw.append(download); kept.append(raw);
       if (branch.dial === 'UNHINGED SANDBOX') kept.append(element('p', 'Kept in the sandbox. To consider action, branch with another dial first. Nothing has become a task.', 'small'));
-      else { const promote = element('button', 'Choose from original…', 'text-button'); promote.onclick = () => { openSource(branch.sourceId, false); notice('Review the exact original, then choose a next step explicitly. This distillation hasn’t committed anything.'); }; kept.append(promote); }
+      else {
+        const consider = element('button', proposalPending.has(item.id) ? 'Preparing proposal…' : 'Consider as a next step…', 'quiet'); consider.disabled = proposalPending.has(item.id); consider.onclick = () => considerProposal(item.id); kept.append(consider);
+        const promote = element('button', 'Choose from original…', 'text-button'); promote.onclick = () => { openSource(branch.sourceId, false); notice('Review the exact original, then choose a next step explicitly. This distillation hasn’t committed anything.'); }; kept.append(promote); }
       card.append(kept);
     }
     host.append(card);
   }
+}
+async function considerProposal(distillationId) {
+  if (proposalPending.has(distillationId) || resetting || !storageHealthy) return;
+  const expectedEpoch = workspaceEpoch, generation = epoch, route = routeFromHash();
+  proposalPending.add(distillationId); renderThread();
+  try {
+    const proposal = await store.prepareProposal({ distillationId }, { expectedEpoch });
+    await refreshed();
+    if (generation !== epoch || workspaceEpoch !== expectedEpoch) return;
+    if (routeFromHash() === route && !$('source-dialog').open) openSource(proposal.id, false);
+    notice('Proposal saved with its source attached. NOW is unchanged. Choose an exact detail only if you want to commit to it.');
+  } catch (error) { if (generation === epoch) fail(error); }
+  finally { proposalPending.delete(distillationId); if (state) renderThread(); }
+}
+function proposalProvenance(capture) {
+  if (!capture.derivedFromId) return null;
+  const box = element('aside', undefined, 'proposal-provenance'); let status;
+  try { status = validateProposalProvenance(capture, state); } catch { status = 'recovery'; }
+  box.append(element('p', status === 'verified' ? 'Prepared from your distillation. Saved links verified.' : 'Proposal source links need recovery. Its exact writing is kept.', 'small'));
+  if (status !== 'verified') {
+    const recovery = element('button', 'Inspect source recovery', 'text-button'); recovery.onclick = () => { if ($('source-dialog').open) $('source-dialog').close(); showView('engine'); }; box.append(recovery); return box;
+  }
+  const distilled = state.distillations.find(d => d.id === capture.derivedFromId), branch = state.explorations.find(b => b.id === distilled.explorationId), original = state.captures.find(c => c.id === branch.sourceId);
+  const lineage = element('details', undefined, 'proposal-lineage'); lineage.append(element('summary', 'Read proposal lineage'), element('p', 'Your own writing, preserved through each step. Verified links and checksums don’t establish factual truth or completed work.', 'small'));
+  for (const [heading, text] of [[`Distillation · ${distilled.type}`, distilled.text], [`Exploration · ${branch.dial}`, branch.text], ['Original source', original.text]]) lineage.append(element('h4', heading), element('pre', text, 'raw'));
+  const open = element('button', 'Open source thread', 'text-button'); open.onclick = () => { if ($('source-dialog').open) $('source-dialog').close(); openThread(original.id); requestAnimationFrame(() => $(`branch-${branch.id}`)?.scrollIntoView({ block: 'center' })); }; lineage.append(open); box.append(lineage); return box;
 }
 const exploreBody = () => ({ ...explorationDraft, text: value('explore-text'), dial: $('explore-dial').value });
 const distillBody = () => ({ ...distillationDraft, text: value('distill-text'), type: $('distill-type').value });
@@ -303,7 +334,8 @@ function organized(capture, choices = true) {
 function renderSource() {
   const capture = state.captures.find(c => c.id === sourceId); if (!capture) { $('source-body').replaceChildren(element('p', 'This original is no longer in the active workspace. Check Engine Room recovery or your downloaded backup.')); $('source-proof').textContent = ''; return; }
   $('show-raw').setAttribute('aria-pressed', String(rawView)); $('show-organized').setAttribute('aria-pressed', String(!rawView));
-  $('source-body').replaceChildren(rawView ? element('pre', capture.text, 'raw') : organized(capture));
+  const provenance = proposalProvenance(capture);
+  $('source-body').replaceChildren(...(provenance ? [provenance] : []), rawView ? element('pre', capture.text, 'raw') : organized(capture));
   $('source-proof').textContent = `Original verified · SHA-256 ${capture.hash.slice(0, 16)}… · ${capture.text.length} UTF-16 code units`;
 }
 function openSource(id, raw) { sourceId = id; rawView = raw; renderSource(); $('source-dialog').showModal(); }
@@ -615,7 +647,7 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading) throw Error('Wait for the current save or view to finish.');
+  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size) throw Error('Wait for the current save or view to finish.');
   document.body.inert = true;
   try {
     const pending = [['capture', captureBody()]];

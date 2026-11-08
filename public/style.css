@@ -868,3 +868,7 @@ textarea {
 .exploration-card h3, .exploration-card p, .distillation-card { overflow-wrap: anywhere; min-width: 0; }
 .distillation-card { margin-top: 1.2rem; padding: 1rem 0 0 1rem; border-top: 1px solid #ffffff18; }
 .exploration-card .post-actions { flex-wrap: wrap; }
+
+.proposal-provenance { margin:1rem 0; padding:1rem; border:1px solid #a99ae844; border-radius:.65rem; min-width:0; overflow-wrap:anywhere; }
+.proposal-lineage .raw { max-height:18rem; overflow:auto; }
+.distillation-card > button { margin:.4rem .6rem .4rem 0; }
