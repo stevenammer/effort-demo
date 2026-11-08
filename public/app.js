@@ -3,6 +3,7 @@ import { deriveCommitments } from './intent.js';
 import { organizeText, titleOf } from './core/ef.js';
 import { createStore, KEY, LIMITS } from './store.js';
 import { spanKey, parentOf, threadRoot } from './spans.js';
+import { createDraftShelf } from './drafts.js';
 
 const $ = id => document.getElementById(id);
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -13,7 +14,37 @@ const displayTitle = (text, max = 90) => {
 };
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
-let draftTimer, draftDirty = false;
+let shelf, workspaceEpoch, fenced = false, resetting = false;
+const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
+const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
+function setValue(id, text) { $(id).value = text; shadows.set(id, text); }
+function edited(id) { shadows.delete(id); }
+function status(id, text) { if ($(id)) $(id).textContent = text; }
+async function saveDraft(context, body, target, explicit = false) {
+  if (resetting) return;
+  if (!shelf) { status(target, 'Draft is only in this window. Copy it before leaving.'); return; }
+  const generation = (versions.get(context) ?? 0) + 1; versions.set(context, generation);
+  if (fenced && !adopted.has(context)) {
+    if (!explicit) { status(target, 'Workspace changed. Your writing remains here. Type or save to keep it in the new workspace.'); return; }
+    try { await shelf.load(context); adopted.add(context); if (versions.get(context) !== generation) return; } catch (e) { status(target, `${e.message} Copy your writing before leaving.`); return; }
+  }
+  if (explicit && context.startsWith('reply:')) volatileReplies.delete(context.slice(6));
+  status(target, 'Keeping draft…');
+  try { await shelf.save(context, body); if (versions.get(context) === generation) status(target, 'Draft kept in this browser.'); }
+  catch (e) { status(target, `${e.message} Copy your writing before leaving.`); }
+}
+async function loadContext(context) {
+  if (!shelf) return null;
+  let record = await shelf.load(context);
+  if (!record && shelf.migrateLegacy) record = await shelf.migrateLegacy(context);
+  return record;
+}
+async function clearDraft(context, body) { if (!shelf || (fenced && !adopted.has(context))) throw Error("Draft remains in this window after the workspace changed."); await shelf.clear(context, body); }
+const captureBody = () => ({ text: value('capture-text'), span: $('capture-span').value });
+const replyBody = () => ({ text: value('reply-text'), parentId: replyTarget });
+function requestId(context, body) { const key = `${KEY}-request-${context}`; const raw = JSON.stringify(body); try { const old = JSON.parse(sessionStorage.getItem(key) || 'null'); if (old?.body === raw) return old.id; const id = crypto.randomUUID(); sessionStorage.setItem(key, JSON.stringify({body: raw, id})); return id; } catch { const old = requestIds.get(key); if (old?.body === raw) return old.id; const id = crypto.randomUUID(); requestIds.set(key, {body: raw, id}); return id; } }
+const requestIds = new Map();
+function releaseRequest(context) { const key = `${KEY}-request-${context}`; requestIds.delete(key); try { sessionStorage.removeItem(key); } catch {} }
 const DRAFT = `${KEY}-draft`;
 function notice(text, error = false) { $('notice').textContent = text; $('notice').classList.toggle('error', error); $('notice').hidden = false; }
 function fail(error) { notice(error.message || 'That did not finish. Your original text has not been removed.', true); }
@@ -23,7 +54,7 @@ function showView(route, focus = true) {
   currentView = base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
   try { activeSpan = base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
   const nextThread = base === 'thread' ? encoded : null;
-  if (threadId !== nextThread) { persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
+  if (threadId !== nextThread) { if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
     if (button.dataset.view === (currentView === 'thread' ? 'spans' : currentView)) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -103,10 +134,11 @@ function renderSpans() {
 }
 function renderThread() {
   if (currentView !== 'thread') return;
+  if (replyLoading) { $('thread-post').replaceChildren(); return; }
   const requested = state.captures.find(c => c.id === threadId), root = requested && threadRoot(requested, state.captures);
   const main = $('thread-post'); main.replaceChildren();
   $('thread-permalink').hidden = $('reply-to-root').hidden = !root;
-  if (!root) { $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = true; return; }
+  if (!root) { $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
   $('reply-form').hidden = false; $('thread-permalink').href = `#thread/${root.id}`;
   $('back-feed').onclick = () => openSpan(spanKey(root.span));
   main.append(element('span', `${root.span} · ${formatDate(root.createdAt)} · ${root.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'), element('h1', displayTitle(root.text, 110)));
@@ -135,11 +167,13 @@ function renderThread() {
     actions.append(button, source, permalink); card.append(actions); if (capture.id === threadId) card.classList.add('selected-reply'); return card;
   }));
   if (!rows.length) $('thread-replies').append(element('p', 'Room for the next thought. Replies will stay attached to this post.', 'muted'));
-  if (!replyTarget || !state.captures.some(c => c.id === replyTarget)) replyTarget = root.id;
-  $('reply-target').textContent = `Replying to: ${displayTitle(state.captures.find(c => c.id === replyTarget).text, 100)}`;
+  if (!replyTarget && !value('reply-text')) replyTarget = root.id;
+  const target = state.captures.find(c => c.id === replyTarget);
+  const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
+  $('reply-target').textContent = validTarget ? `Replying to: ${displayTitle(target.text, 100)}` : 'Choose a reply target before saving. Your draft is still here.';
   $('reply-to-root').onclick = () => targetReply(root.id);
 }
-function targetReply(id) { persistReplyDraft(); replyTarget = id; replyDraftDirty = true; persistReplyDraft(); renderThread(); $('reply-text').focus(); $('reply-form').scrollIntoView({ block: 'center', behavior: 'auto' }); }
+function targetReply(id) { if (replyLoading) return; persistReplyDraft(); replyTarget = id; persistReplyDraft(); renderThread(); $('reply-text').focus(); $('reply-form').scrollIntoView({ block: 'center', behavior: 'auto' }); }
 function organized(capture, choices = true) {
   const body = element('div');
   for (const section of organizeText(capture.id, capture.text).sections) {
@@ -167,52 +201,39 @@ function renderSource() {
   $('source-proof').textContent = `Original verified · SHA-256 ${capture.hash.slice(0, 16)}… · ${capture.text.length} UTF-16 code units`;
 }
 function openSource(id, raw) { sourceId = id; rawView = raw; renderSource(); $('source-dialog').showModal(); }
-function persistDraft() {
-  clearTimeout(draftTimer);
-  if (!draftDirty) return;
-  try {
-    localStorage.setItem(DRAFT, JSON.stringify({ text: $('capture-text').value, span: $('capture-span').value }));
-    draftDirty = false;
-    $('draft-state').textContent = 'Draft kept in this browser.';
-  } catch { $('draft-state').textContent = 'The draft could not be stored. Keep this window open and copy it before leaving.'; }
+function persistDraft(explicit = false) { return saveDraft('capture', captureBody(), 'draft-state', explicit); }
+function persistReplyDraft(explicit = false) { if (threadId && !replyLoading) return saveDraft(`reply:${threadId}`, replyBody(), 'reply-draft-state', explicit); }
+let replyLoad = 0, replyLoading = false;
+async function loadReplyDraft() {
+  const token = ++replyLoad, context = threadId && `reply:${threadId}`; replyLoading = !!context;
+  $('reply-text').disabled = true; $('save-reply').disabled = true;
+  setValue('reply-text', ''); replyTarget = null;
+  if (!context) return;
+  try { const savedMemory = volatileReplies.get(threadId); const record = savedMemory ? { body: savedMemory } : await loadContext(context); if (token !== replyLoad) return; if (record) { setValue('reply-text', record.body.text); replyTarget = record.body.parentId; } }
+  catch (e) { status('reply-draft-state', `${e.message} Draft recovery is available in Engine Room.`); }
+  if (token === replyLoad) { replyLoading = false; $('reply-text').disabled = false; $('save-reply').disabled = !storageHealthy; renderThread(); }
 }
-function loadDraft() {
-  try {
-    const draft = JSON.parse(localStorage.getItem(DRAFT) ?? 'null');
-    if (draft && typeof draft.text === 'string' && draft.text.length <= LIMITS.text && typeof draft.span === 'string') {
-      $('capture-text').value = draft.text; $('capture-span').value = draft.span;
-    }
-  } catch { /* A malformed draft doesn't prevent viewing verified saved originals. */ }
-}
-let replyDraftDirty = false;
-function replyDraftKey() { return threadId ? `${KEY}-reply-${threadId}` : null; }
-function persistReplyDraft() {
-  if (!replyDraftDirty || !replyDraftKey()) return;
-  try { localStorage.setItem(replyDraftKey(), JSON.stringify({ text: $('reply-text').value, parentId: replyTarget })); replyDraftDirty = false; $('reply-draft-state').textContent = 'Draft kept in this browser.'; }
-  catch { $('reply-draft-state').textContent = 'This draft could not be stored. Copy it before leaving.'; }
-}
-function loadReplyDraft() {
-  $('reply-text').value = ''; $('reply-draft-state').textContent = ''; replyDraftDirty = false;
-  try { const draft = JSON.parse(localStorage.getItem(replyDraftKey()) ?? 'null'); if (draft && typeof draft.text === 'string' && draft.text.length <= LIMITS.text) { $('reply-text').value = draft.text; replyTarget = draft.parentId; } } catch {}
-}
-$('reply-text').oninput = () => { replyDraftDirty = true; persistReplyDraft(); };
-addEventListener('pagehide', persistReplyDraft);
+$('reply-text').oninput = () => { edited('reply-text'); persistReplyDraft(true); };
+addEventListener('pagehide', () => { persistReplyDraft(); });
 $('reply-form').onsubmit = async event => {
-  event.preventDefault(); const parent = state.captures.find(c => c.id === replyTarget); if (!parent) return;
-  const text = $('reply-text').value, destination = threadId; persistReplyDraft(); $('save-reply').disabled = true;
+  event.preventDefault(); const parent = state.captures.find(c => c.id === replyTarget), root = state.captures.find(c => c.id === threadId); if (!parent || !root || threadRoot(parent, state.captures)?.id !== threadRoot(root, state.captures)?.id) { status('reply-draft-state', 'Choose a reply target in this thread first.'); return; }
+  const body = replyBody(), text = body.text, destination = threadId; $('save-reply').disabled = true; await persistReplyDraft(true);
   try {
-    await store.capture(text, parent.span, parent.id); await refreshed();
-    if (threadId === destination && $('reply-text').value === text) { $('reply-text').value = ''; replyDraftDirty = true; persistReplyDraft(); }
+    await store.capture(text, parent.span, parent.id, { requestId: requestId(`reply:${destination}`, body) });
     notice('Reply saved. Exact original verified. NOW is unchanged.');
+    if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) { try { await clearDraft(`reply:${destination}`, body); releaseRequest(`reply:${destination}`); setValue('reply-text', ''); } catch (e) { cleanupOffer(`reply:${destination}`, body, 'reply-draft-state', 'Reply saved.', () => { releaseRequest(`reply:${destination}`); if (threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)) setValue('reply-text', ''); }, () => threadId === destination && JSON.stringify(replyBody()) === JSON.stringify(body)); } }
+    try { await refreshed(); } catch (e) { status('reply-draft-state', `Reply saved, but refresh failed: ${e.message}`); }
   } catch (error) { $('reply-draft-state').textContent = `${error.message} Your draft is still here.`; }
   finally { $('save-reply').disabled = false; }
 };
 function refreshed() {
   refreshing = refreshing.catch(() => {}).then(async () => {
-    state = await store.read(); const health = await store.health();
+    state = await store.read({ includeDrafts: false }); const health = await store.health();
+    if (workspaceEpoch !== undefined && health.epoch !== workspaceEpoch) { fenced = true; adopted.clear(); status('draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); status('reply-draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); } workspaceEpoch = health.epoch;
     storageHealthy = true; $('capture-open').disabled = booting; render();
     $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
-    $('recovery-status').textContent = health.migrationWarning || `${state.recovery.length} damaged record${state.recovery.length === 1 ? '' : 's'} preserved separately. Verified originals remain available and you can keep capturing.`;
+    const damagedOriginals = state.recovery.filter(record => record.source !== 'draft').length, draftCopies = state.recovery.length - damagedOriginals;
+    $('recovery-status').textContent = health.migrationWarning || `${damagedOriginals} damaged record${damagedOriginals === 1 ? '' : 's'} preserved separately.${draftCopies ? ` ${draftCopies} draft recovery cop${draftCopies === 1 ? 'y' : 'ies'} also preserved.` : ''} Verified originals remain available and you can keep capturing.`;
     $('recovery-items').replaceChildren(...state.recovery.map(record => {
       const item = element('details'); item.append(element('summary', `${record.source}: ${record.reason}`), element('pre', record.raw, 'raw')); return item;
     }));
@@ -259,24 +280,41 @@ function renderReturnPoint() {
   $('return-status').textContent = placeStatus(place); $('resume-place').textContent = canResume(place) ? 'Resume this step' : 'Close return point';
   $('resume-place').onclick = () => resumeSavedPlace(place, $('resume-place'));
 }
-function openHold() {
+async function openHold() {
+  if (booting || !state || resetting) return;
   if (holdSaving) { notice('Your return point is still saving. Keep this window open.'); return; }
+  $('hold-summary').disabled = $('hold-next').disabled = true;
+  let saved; try { saved = await loadContext('hold'); } catch (e) { status('hold-error', e.message); }
   holdExpected = structuredClone(state.now); holdRoute = routeFromHash();
   holdContext = { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false };
   const thought = threadId && state.captures.find(c => c.id === threadId);
   $('hold-summary').value = thought ? displayTitle(thought.text, 300) : state.now?.quote ?? '';
-  $('hold-next').value = ''; $('hold-error').textContent = ''; $('hold-dialog').showModal(); $('hold-summary').focus();
+  $('hold-next').value = ''; if (saved && (saved.body.summary || saved.body.nextAction)) { holdExpected = saved.body.expected; holdRoute = saved.body.route; holdContext = saved.body.context; setValue('hold-summary', saved.body.summary); setValue('hold-next', saved.body.nextAction); } else { shadows.delete('hold-summary'); shadows.delete('hold-next'); } $('hold-summary').disabled = $('hold-next').disabled = false; $('hold-error').textContent = saved ? 'Saved return notes restored with their original context.' : ''; $('hold-dialog').showModal(); $('hold-summary').focus();
 }
+const holdBody = () => ({ summary: value('hold-summary'), nextAction: value('hold-next'), route: holdRoute, context: holdContext, expected: holdExpected });
+for (const id of ['hold-summary', 'hold-next']) $(id).oninput = () => { edited(id); saveDraft('hold', holdBody(), 'hold-error', true); };
 $('hold-open').onclick = openHold;
 $('hold-form').onsubmit = async event => {
   event.preventDefault(); if (holdSaving) return; holdSaving = true;
   for (const id of ['save-place', 'hold-summary', 'hold-next']) $(id).disabled = true;
+  const body = holdBody(), signature = JSON.stringify(body);
   try {
-    await store.holdPlace({ summary: $('hold-summary').value, nextAction: $('hold-next').value, route: holdRoute, context: holdContext, expected: holdExpected });
-    await refreshed(); $('hold-dialog').close(); notice('Your place is kept. Capture or explore freely; NOW is unchanged.');
-  } catch (error) { $('hold-error').textContent = `${error.message} Your return note is still here.`; }
+    await saveDraft('hold', body, 'hold-error', true);
+    if (completed.get('hold') !== signature) { await store.holdPlace(body, { requestId: requestId('hold', body) }); completed.set('hold', signature); }
+    notice('Your place is kept. NOW is unchanged.');
+    try { await clearDraft('hold', body); releaseRequest('hold'); completed.delete('hold'); $('hold-dialog').close(); }
+    catch (e) { cleanupOffer('hold', body, 'hold-error', 'Your place is kept.', () => { releaseRequest('hold'); completed.delete('hold'); $('hold-dialog').close(); }); }
+    try { await refreshed(); } catch (e) { notice(`Your place is kept, but the view could not refresh: ${e.message}`, true); }
+  } catch (error) { status('hold-error', `${error.message} Your return note is still here.`); }
   finally { holdSaving = false; for (const id of ['save-place', 'hold-summary', 'hold-next']) $(id).disabled = false; }
 };
+function cleanupOffer(context, body, target, message, onClean = () => {}, isCurrent = () => true) {
+  if (!isCurrent()) { status(target, `${message} Newer writing was kept as a draft.`); return; }
+  status(target, `${message} Draft cleanup failed. Use Retry draft cleanup or copy the draft.`);
+  let button = $(target).parentElement.querySelector('.retry-draft-cleanup');
+  if (!button) { button = element('button', 'Retry draft cleanup', 'quiet retry-draft-cleanup'); button.type = 'button'; $(target).after(button); }
+  button.onclick = async () => { button.disabled = true; try { await clearDraft(context, body); button.remove(); status(target, `${message} Draft cleared.`); onClean(); } catch (e) { status(target, `${message} Draft cleanup still failed: ${e.message}`); } finally { button.disabled = false; } };
+}
 function sourceButton(choice) {
   const button = element('button', 'See source ↗', 'text-button');
   const source = state.captures.find(c => c.id === choice.captureId);
@@ -303,7 +341,7 @@ function renderSpanDepth(span) {
       const card = element('article', undefined, 'panel commitment-card'); card.append(element('span', item.state, 'eyebrow'), element('h3', item.choice.quote));
       const actions = element('div', undefined, 'post-actions');
       if (item.state !== 'ACTIVE') { const choose = element('button', 'Make this NOW', 'quiet'); choose.onclick = async () => { choose.disabled = true; try { state = await store.selectCommitment(item.id, state.now); render(); showView('home'); notice('Chosen work restored to NOW.'); } catch (error) { fail(error); } finally { choose.disabled = false; } }; actions.append(choose); }
-      const drop = element('button', 'Drop commitment…', 'text-button'); drop.onclick = () => { if (dropSaving) { notice('The commitment change is still saving.'); return; } dropping = item; $('drop-choice').textContent = item.choice.quote; $('drop-note').value = ''; $('drop-error').textContent = ''; $('drop-dialog').showModal(); $('drop-note').focus(); };
+      const drop = element('button', 'Drop commitment…', 'text-button'); drop.onclick = async () => { if (dropSaving) { notice('The commitment change is still saving.'); return; } dropping = item; $('drop-choice').textContent = item.choice.quote; $('drop-note').disabled = true; setValue('drop-note', ''); $('drop-error').textContent = ''; $('drop-dialog').showModal(); try { const saved = await loadContext(`drop:${item.id}`); if (saved) { setValue('drop-note', saved.body.note); dropping = {...item, latestId: saved.body.latestId}; } } catch (e) { status('drop-error', e.message); } $('drop-note').disabled = false; $('drop-note').focus(); };
       actions.append(sourceButton(item.choice), drop); card.append(actions); body.append(card);
     }
     for (const place of state.places ?? []) {
@@ -317,10 +355,17 @@ function renderSpanDepth(span) {
     if (closed.length) { const history = element('details', undefined, 'panel'); history.append(element('summary', 'Dropped commitments, with their reasons')); for (const c of closed) history.append(element('h3', c.choice.quote), element('p', c.history.at(-1).note, 'reply-body'), sourceButton(c.choice)); body.append(history); }
   }
 }
+$('drop-note').oninput = () => { edited('drop-note'); if (dropping) saveDraft(`drop:${dropping.id}`, { note: value('drop-note'), commitmentId: dropping.id, latestId: dropping.latestId }, 'drop-error', true); };
 $('drop-form').onsubmit = async event => {
   event.preventDefault(); if (!dropping || dropSaving) return; dropSaving = true; $('save-drop').disabled = $('drop-note').disabled = true;
-  try { state = await store.dropCommitment(dropping.id, $('drop-note').value, dropping.latestId); render(); $('drop-dialog').close(); notice('Commitment dropped. Its reason and original are kept. Nothing else was chosen.'); }
-  catch (error) { $('drop-error').textContent = error.message; } finally { dropSaving = false; $('save-drop').disabled = $('drop-note').disabled = false; }
+  const body = { note: value('drop-note'), commitmentId: dropping.id, latestId: dropping.latestId }, context = `drop:${dropping.id}`, signature = JSON.stringify(body);
+  try {
+    await saveDraft(context, body, 'drop-error', true);
+    if (completed.get(context) !== signature) { state = await store.dropCommitment(dropping.id, body.note, body.latestId); completed.set(context, signature); }
+    notice('Commitment dropped. Its reason and original are kept. Nothing else was chosen.');
+    try { await clearDraft(context, body); completed.delete(context); $('drop-dialog').close(); } catch (e) { cleanupOffer(context, body, 'drop-error', 'Commitment dropped.', () => { completed.delete(context); $('drop-dialog').close(); }); }
+    try { render(); } catch (e) { notice(`Commitment dropped, but the view could not refresh: ${e.message}`, true); }
+  } catch (error) { status('drop-error', error.message); } finally { dropSaving = false; $('save-drop').disabled = $('drop-note').disabled = false; }
 };
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
@@ -331,27 +376,34 @@ $('capture-open').onclick = () => openCapture();
 $('post-to-span').onclick = () => openCapture(state.spans.find(s => s.id === activeSpan)?.name);
 $('back-spans').onclick = () => showView('spans');
 $('span-search').oninput = renderSpans;
-$('new-span').onclick = () => { $('span-error').textContent = ''; $('span-dialog').showModal(); $('span-name').focus(); };
+$('new-span').onclick = async () => { $('span-name').disabled = true; $('span-dialog').showModal(); try { const saved = await loadContext('span'); setValue('span-name', saved?.body.name ?? ''); } catch (e) { status('span-error', e.message); } $('span-name').disabled = false; $('span-name').focus(); };
+$('span-name').oninput = () => { edited('span-name'); saveDraft('span', { name: value('span-name') }, 'span-error', true); };
 $('span-form').onsubmit = async event => {
   event.preventDefault(); $('save-span').disabled = true;
-  try { const span = await store.createSpan($('span-name').value); await refreshed(); $('span-dialog').close(); $('span-name').value = ''; openSpan(span.id); notice('Attention Span ready. Nothing has been made a task.'); }
-  catch (error) { $('span-error').textContent = error.message; } finally { $('save-span').disabled = false; }
+  const body = { name: value('span-name') }, signature = JSON.stringify(body);
+  try {
+    await saveDraft('span', body, 'span-error', true);
+    let result = completed.get('span'); if (!result || result.signature !== signature) { result = { signature, span: await store.createSpan(body.name) }; completed.set('span', result); }
+    notice('Attention Span ready. Nothing has been made a task.');
+    try { await clearDraft('span', body); completed.delete('span'); $('span-dialog').close(); setValue('span-name', ''); } catch (e) { cleanupOffer('span', body, 'span-error', 'Attention Span created.', () => { completed.delete('span'); $('span-dialog').close(); }); }
+    try { await refreshed(); openSpan(result.span.id); } catch (e) { notice(`Attention Span created, but the view could not refresh: ${e.message}`, true); }
+  } catch (error) { status('span-error', error.message); } finally { $('save-span').disabled = false; }
 };
-$('capture-text').oninput = () => { draftDirty = true; $('draft-state').textContent = 'Keeping draft…'; clearTimeout(draftTimer); draftTimer = setTimeout(persistDraft, 120); };
-$('capture-span').onchange = () => { draftDirty = true; persistDraft(); };
-$('capture-dialog').addEventListener('close', persistDraft);
-addEventListener('pagehide', persistDraft);
-$('fill-example').onclick = () => { $('capture-text').value = "Maybe build a small workshop exercise.\nI'll review the outline tomorrow.\nI'm waiting for the venue to reply."; draftDirty = true; persistDraft(); $('capture-text').focus(); };
+$('capture-text').oninput = () => { edited('capture-text'); persistDraft(true); };
+$('capture-span').onchange = () => persistDraft(true);
+$('capture-dialog').addEventListener('close', () => { if (value('capture-text')) persistDraft(); });
+addEventListener('pagehide', () => { if (value('capture-text')) persistDraft(); });
+$('fill-example').onclick = () => { setValue('capture-text', "Maybe build a small workshop exercise.\nI'll review the outline tomorrow.\nI'm waiting for the venue to reply."); persistDraft(true); $('capture-text').focus(); };
 $('capture-form').onsubmit = async event => {
   event.preventDefault(); if (saving || !storageHealthy) return;
-  const text = $('capture-text').value, span = $('capture-span').value, generation = epoch;
-  persistDraft(); saving = true; $('save-capture').disabled = true; $('save-capture').textContent = 'Verifying…';
+  const body = captureBody(), text = body.text, span = body.span, generation = epoch;
+  saving = true; $('save-capture').disabled = true; await persistDraft(true); $('save-capture').textContent = 'Verifying…';
   try {
-    await store.capture(text, span);
+    await store.capture(text, span, null, { requestId: requestId('capture', body) });
     if (generation !== epoch) return;
-    await refreshed();
-    if ($('capture-text').value === text) { $('capture-text').value = ''; draftDirty = true; persistDraft(); }
-    $('capture-dialog').close(); notice('Saved. Exact original read back and verified. Your next step is unchanged.');
+    notice('Saved. Exact original read back and verified. Your next step is unchanged.');
+    if (JSON.stringify(captureBody()) === JSON.stringify(body)) { try { await clearDraft('capture', body); releaseRequest('capture'); setValue('capture-text', ''); $('capture-dialog').close(); } catch (e) { cleanupOffer('capture', body, 'draft-state', 'Original saved.', () => { releaseRequest('capture'); if (JSON.stringify(captureBody()) === JSON.stringify(body)) { setValue('capture-text', ''); $('capture-dialog').close(); } }, () => JSON.stringify(captureBody()) === JSON.stringify(body)); } }
+    try { await refreshed(); } catch (e) { status('draft-state', `Original saved; refresh failed: ${e.message}`); }
   } catch (error) { if (generation !== epoch) return; fail(error); $('draft-state').textContent = `${error.message} Your draft is still here.`; }
   finally { saving = false; $('save-capture').disabled = false; $('save-capture').textContent = 'Save original'; }
 };
@@ -365,7 +417,10 @@ function downloadText(raw, filename, type = 'application/json') {
 }
 $('download').onclick = async () => {
   try {
-    const raw = await store.exportData(); const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+    try { await shelf?.flush(); } catch {}
+    const report = await shelf?.list().catch(() => ({ damaged: [] }));
+    const draftCopies = (report?.damaged ?? []).filter(x => typeof x.raw === 'string').map(({source, raw, reason}) => ({source, raw, reason}));
+    const raw = await store.exportData({ draftCopies }); const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
     const link = element('a'); link.href = url; link.download = 'effort-browser-demo-backup.json'; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     notice('Demo backup prepared for download. This is separate from a native phone backup.');
   } catch (error) { fail(error); }
@@ -380,25 +435,73 @@ $('restore-file').onchange = async () => {
 };
 async function replaceDemo(samples) {
   if (!confirm(samples ? 'Replace this browser demo with fictional examples? Download a backup first if you want to keep its current captures.' : 'Clear only this browser demo and its draft? This does not touch the Android app.')) return;
-  epoch++;
+  epoch++; resetting = true;
   try {
     if (samples) await store.seed(true); else await store.reset();
     let draftCleanupError;
-    try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
-    draftDirty = false; $('capture-text').value = ''; $('capture-span').value = 'Unsorted'; $('draft-state').textContent = '';
-    await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but browser draft cleanup failed. Copy any draft you need and retry the clear.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private EFFORT app is separate.', !!draftCleanupError);
-  } catch (error) { fail(error); }
+    try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
+    await shelf?.close(); shelf = null;
+    ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined;
+    shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
+    try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
+    for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name']) $(id).value = '';
+    for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error']) status(id, '');
+    document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
+    $('capture-span').value = 'Unsorted';
+    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog']) if ($(id).open) $(id).close();
+    workspaceEpoch = (await store.health()).epoch; fenced = false;
+    try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }
+    await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but draft storage or cleanup failed. Check Engine Room before writing.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private EFFORT app is separate.', !!draftCleanupError);
+  } catch (error) { fail(error); } finally { resetting = false; }
 }
 $('sample-reset').onclick = () => replaceDemo(true); $('reset').onclick = () => replaceDemo(false);
+function addDraftDownloads(item, body) {
+  for (const [key, label] of [['text', 'writing'], ['name', 'name'], ['note', 'note'], ['summary', 'summary'], ['nextAction', 'return note']]) {
+    if (typeof body?.[key] !== 'string') continue;
+    const button = element('button', `Download ${label} as text`, 'text-button');
+    button.onclick = () => downloadText(body[key], `effort-draft-${key}.txt`, 'text/plain'); item.append(button);
+  }
+}
+async function renderDraftRecovery() {
+  const host = $('draft-recovery-items'); if (!host || !shelf) return;
+  try {
+    const report = await shelf.list(); host.replaceChildren();
+    const warnings = shelf.health().warnings; $('draft-recovery-status').textContent = warnings.join(' ') || 'Draft copies and recovery entries are kept in this browser.';
+    for (const record of report.records) {
+      const item = element('details'); item.append(element('summary', `${record.context} · ${formatDate(record.updatedAt)}`));
+      const raw = JSON.stringify(record.body, null, 2); item.append(element('pre', raw, 'raw'));
+      addDraftDownloads(item, record.body);
+      const recover = element('button', 'Recover into this tab', 'quiet'); recover.onclick = async () => { try { if (record.context === 'capture' && $('capture-text').value && JSON.stringify(captureBody()) !== JSON.stringify(record.body)) throw Error('This composer already has different writing.'); if (record.context === `reply:${threadId}` && $('reply-text').value && JSON.stringify(replyBody()) !== JSON.stringify(record.body)) throw Error('This composer already has different writing.'); const current = await shelf.load(record.context); const empty = b => !b || !(b.text || b.name || b.note || b.summary || b.nextAction); if (!empty(current?.body) && JSON.stringify(current.body) !== JSON.stringify(record.body)) throw Error('This tab already has a different draft in that context.'); await shelf.recoverRecord(record); if (record.context === 'capture' && !$('capture-text').value) { setValue('capture-text', record.body.text); $('capture-span').value = record.body.span; } else if (record.context === `reply:${threadId}` && !$('reply-text').value) { setValue('reply-text', record.body.text); replyTarget = record.body.parentId; renderThread(); } notice('Draft recovered into its matching context.'); } catch (e) { fail(e); } }; item.append(recover); host.append(item);
+    }
+    for (const copy of report.damaged) {
+      const item = element('details'); item.append(element('summary', `${copy.source}: ${copy.reason}`)); if (copy.raw !== null) { item.append(element('pre', copy.raw, 'raw')); const download = element('button', 'Download raw recovery copy (JSON)', 'text-button'); download.onclick = () => downloadText(copy.raw, 'effort-draft-recovery.json', 'application/json'); try { const parsed = JSON.parse(copy.raw); addDraftDownloads(item, parsed.body ?? parsed); } catch {} const recover = element('button', 'Recover into matching context', 'quiet'); recover.onclick = async () => { try { if ($('capture-text').value || $('reply-text').value) throw Error('Copy or save the open composer writing before recovering this copy.'); const record = await shelf.recover(copy.source); if (record.context === 'capture' && !$('capture-text').value) { setValue('capture-text', record.body.text); $('capture-span').value = record.body.span; } notice('Copy recovered into its matching context.'); } catch (e) { fail(e); } }; item.append(download, recover); } host.append(item);
+    }
+  } catch (e) { $('draft-recovery-status').textContent = `Draft recovery could not open: ${e.message}`; }
+}
+$('draft-recovery').addEventListener('toggle', () => { if ($('draft-recovery').open) renderDraftRecovery(); });
 $('lock-note').textContent = 'IndexedDB transactions serialize writes across tabs. Changed records refresh when another tab saves or this window becomes active. Browser storage can still be erased: keep downloaded backups.';
-loadDraft();
+function recoverLegacyCapture() {
+  if (workspaceEpoch !== undefined && workspaceEpoch !== null) return false;
+  try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
+}
 try {
-  store = createStore(); await store.seed(); await refreshed(); loadDraft(); booting = false; $('capture-open').disabled = false;
+  store = createStore(); await store.seed(); await refreshed(); workspaceEpoch = (await store.health()).epoch;
+  try {
+    shelf = createDraftShelf(); await shelf.ready;
+    const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); $('capture-span').value = draft.body.span; }
+  } catch (error) {
+    await shelf?.close().catch(() => {}); shelf = null; const recovered = recoverLegacyCapture();
+    status('draft-state', `Draft storage could not open: ${error.message}. ${recovered ? 'A legacy copy is visible here; copy it before leaving.' : 'Writing is only kept in this window. Copy it before leaving.'} Original saving is available.`);
+    status('draft-recovery-status', `Draft recovery could not open: ${error.message}`);
+  }
+  booting = false; $('main').inert = false; $('main').removeAttribute('aria-busy'); $('capture-open').disabled = false;
   store.subscribe(() => refreshed().catch(fail));
   addEventListener('visibilitychange', () => { if (!document.hidden) refreshed().catch(fail); });
   addEventListener('focus', () => refreshed().catch(fail));
   showView(routeFromHash(), false);
 } catch (error) {
-  storageHealthy = false; state = { captures: [], now: null }; render(); $('capture-open').disabled = true; showView('engine', false);
+  booting = false; $('main').inert = false; $('main').removeAttribute('aria-busy'); storageHealthy = false; state = { captures: [], now: null, spans: [] }; render(); $('capture-open').disabled = false; $('save-capture').disabled = true;
+  $('storage-count').textContent = 'Saved originals unavailable'; $('now-title').textContent = 'NOW is unavailable.'; $('now-origin').textContent = 'Workspace unavailable'; $('now-reason').textContent = 'The workspace could not open, so its chosen step cannot be shown.';
+  recoverLegacyCapture(); status('draft-state', 'Workspace unavailable. You can write and copy text, but saving is unavailable.'); showView('engine', false);
   fail(Error(`The local workspace could not open: ${error.message} Your saved data has not been cleared. Keep this tab open and copy any draft before retrying.`));
 }

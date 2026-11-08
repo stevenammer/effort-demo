@@ -1,5 +1,5 @@
 import { request } from './database.js';
-import { same, clone, IntegrityError } from './primitives.js';
+import { same, clone, IntegrityError, validId, stableId } from './primitives.js';
 import { validChoice, sourceKey } from './choices.js';
 import { INTENT_TABLES, INTENT_LIMIT, seal, noteAllowed, legacyIntent, validateEvent, validatePlace, validateResumption, commitmentGroups, deriveCommitment, deriveCommitments, validRoute, validContext, validateIntentState } from './intent.js';
 const meta = (tx, key) => request(tx.objectStore('meta').get(key)).then(row => row?.value);
@@ -140,20 +140,34 @@ export function createContinuity({ db, ready, prepare, notify, read, recoveryRec
     const event = await eventFor(id, item.latestId, 'DROPPED', item.choice, note);
     await commit(saved, { events: [event], now: item.state === 'ACTIVE' ? null : saved.now }); notify(); return read();
   }
-  async function holdPlace({ summary, nextAction = '', route = 'home', context = { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected }) {
+  async function holdPlace({ summary, nextAction = '', route = 'home', context = { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected }, { requestId } = {}) {
     if (!noteAllowed(summary, true) || !noteAllowed(nextAction) || !validRoute(route) || !validContext(context)) throw Error('Add a short summary and a valid return point.');
-    const saved = await begin(); if (expected !== undefined && !same(expected, saved.now)) throw Error('The next step changed in another tab. Refresh before holding your place.');
+    if (requestId !== undefined && !validId(requestId)) throw Error('The return-point request ID is invalid.');
+    const saved = await begin();
+    const id = requestId === undefined ? crypto.randomUUID() : await stableId(JSON.stringify(['hold-place', saved.epoch ?? null, requestId]));
+    const matches = place => place.summary === summary && place.nextAction === nextAction && place.route === route && same(place.context, context) && (expected === undefined || same(place.choice, expected));
+    const prior = saved.places.find(place => place.id === id);
+    if (prior) {
+      await validatePlace(prior, saved.captures, saved.recovery);
+      if (!matches(prior)) throw Error('This request ID already belongs to a different return point.');
+      return prior;
+    }
+    if (expected !== undefined && !same(expected, saved.now)) throw Error('The next step changed in another tab. Refresh before holding your place.');
     const item = saved.now && deriveCommitments(saved.intentEvents).find(c => c.state === 'ACTIVE' && same(c.choice, saved.now));
     if (saved.now && !item) throw Error('The chosen step needs recovery before its place can be kept.');
-    const place = await seal({ id: crypto.randomUUID(), commitmentId: item?.id ?? null, choice: clone(saved.now), summary, nextAction, route, context: clone(context), at: new Date().toISOString() });
-    await db.run(['meta', 'places'], 'readwrite', async tx => {
-      if (await meta(tx, 'epoch') !== saved.epoch || !same(await meta(tx, 'now') ?? null, saved.now)) throw Error('Work changed before the return point was saved. Keep your note and retry.');
-      if (await request(tx.objectStore('places').count()) >= 1000) throw Error('This workspace reached its return-point limit.');
-      await request(tx.objectStore('places').add(place));
+    const place = await seal({ id, commitmentId: item?.id ?? null, choice: clone(saved.now), summary, nextAction, route, context: clone(context), at: new Date().toISOString() });
+    const inserted = await db.run(['meta', 'places'], 'readwrite', async tx => {
+      if (await meta(tx, 'epoch') !== saved.epoch) throw Error('Work changed before the return point was saved. Keep your note and retry.');
+      const table = tx.objectStore('places'), existing = await request(table.get(id));
+      if (existing) return existing;
+      if (!same(await meta(tx, 'now') ?? null, saved.now)) throw Error('Work changed before the return point was saved. Keep your note and retry.');
+      if (await request(table.count()) >= 1000) throw Error('This workspace reached its return-point limit.');
+      await request(table.add(place)); return place;
     });
-    const actual = await db.run(['places'], 'readonly', tx => request(tx.objectStore('places').get(place.id))); await validatePlace(actual, saved.captures, saved.recovery);
-    if (!same(actual, place)) throw Error('The saved return point could not be read back exactly. Keep your note.');
-    notify(); return place;
+    const actual = await db.run(['places'], 'readonly', tx => request(tx.objectStore('places').get(id))); await validatePlace(actual, saved.captures, saved.recovery);
+    if (!same(actual, inserted)) throw Error('The saved return point could not be read back exactly. Keep your note.');
+    if (!matches(actual)) throw Error('This request ID already belongs to a different return point.');
+    notify(); return actual;
   }
   async function resumePlace(id, expectedNow, { closeOnly = false } = {}) {
     const saved = await begin(), place = saved.places.find(p => p.id === id); if (!place) throw Error('This return point needs recovery or belongs to another workspace.');

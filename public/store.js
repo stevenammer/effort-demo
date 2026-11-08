@@ -1,9 +1,11 @@
+import { stableId } from './primitives.js';
+import { validateDraft, DRAFT_LIMITS, DRAFT_RESET_MARKER, markDraftReset } from './drafts.js';
 import { createContinuity } from './continuity-store.js';
 import { INTENT_TABLES, seal } from './intent.js';
 import { makeSpan, initialSpans, spanKey, validSpan, validSpanName } from './spans.js';
 import { openDatabase, request, TABLES } from './database.js';
 import { KEY, LIMITS, SPANS, blank, clone, same, exactKeys, textAllowed, sha256, validChoice,
-  validateCapture, validateState, recoveryRecord, validHash, IntegrityError } from './records.js';
+  validateCapture, validateState, recoveryRecord, validHash, validId, IntegrityError } from './records.js';
 export { KEY, LIMITS, SPANS, sha256, validChoice, validateState } from './records.js';
 
 const meta = (tx, key) => request(tx.objectStore('meta').get(key)).then(row => row?.value);
@@ -16,6 +18,7 @@ export function createStore(options = {}) {
   let legacy = options.legacyStorage;
   if (legacy === undefined) { try { legacy = globalThis.localStorage; } catch { legacy = null; } }
   const db = openDatabase({ factory: options.indexedDB ?? globalThis.indexedDB, name: options.name });
+  try { if (legacy && !legacy.getItem(DRAFT_RESET_MARKER)) markDraftReset(legacy); } catch { /* Primary storage remains usable when the emergency mirror is unavailable. */ }
   const listeners = new Set();
   const channel = options.broadcast !== false && typeof window !== 'undefined' && typeof BroadcastChannel === 'function'
     ? new BroadcastChannel(`${db.name}-changes`) : null;
@@ -152,19 +155,36 @@ export function createStore(options = {}) {
       }
     });
   }
-  async function read() {
-    await recover(); await ensureSpans(); await continuity.repair();
-    return db.run(['captures', 'meta', 'quarantine', 'spans', ...INTENT_TABLES], 'readonly', async tx => {
+  async function recoverDrafts() {
+    const rows = await db.run(['drafts'], 'readonly', tx => request(tx.objectStore('drafts').getAll())), bad = [];
+    for (const row of rows) {
+      try { await validateDraft(row); }
+      catch (error) {
+        if (!(error instanceof IntegrityError)) throw error;
+        let raw; try { raw = JSON.stringify(row); } catch { throw Error('A draft has unsupported stored data. It has not been removed.'); }
+        bad.push({ row, copy: await recoveryRecord('draft', String(row.key).slice(0, 128), raw, error.message) });
+      }
+    }
+    if (!bad.length) return;
+    await db.run(['drafts', 'quarantine'], 'readwrite', async tx => {
+      for (const { row, copy } of bad) if (same(await request(tx.objectStore('drafts').get(row.key)), row)) {
+        await request(tx.objectStore('quarantine').put(copy)); await request(tx.objectStore('drafts').delete(row.key));
+      }
+    });
+  }
+  async function read({ includeDrafts = true } = {}) {
+    await recover(); await ensureSpans(); await continuity.repair(); if (includeDrafts) await recoverDrafts();
+    return db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES], 'readonly', async tx => {
       const captures = await request(tx.objectStore('captures').getAll());
       captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null,
-        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()) };
+        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [] };
     });
   }
   async function health() {
     await ready();
     return db.run(['meta', 'quarantine'], 'readonly', async tx => ({
-      storage: 'IndexedDB', heldNow: !!await meta(tx, 'heldNow'),
+      storage: 'IndexedDB', epoch: await meta(tx, 'epoch') ?? null, heldNow: !!await meta(tx, 'heldNow'),
       recoveryCount: await request(tx.objectStore('quarantine').count()),
       migrationWarning: await meta(tx, 'migrationWarning') ?? null,
     }));
@@ -174,45 +194,69 @@ export function createStore(options = {}) {
       throw Error('This workspace reached its capture limit. Download a backup before clearing any data.');
     }
   }
-  async function capture(text, span = 'Unsorted', parentId = null) {
+  async function capture(text, span = 'Unsorted', parentId = null, { requestId } = {}) {
+    if (requestId !== undefined && !validId(requestId)) throw Error('The capture request has an invalid ID.');
     if (!textAllowed(text) || !validSpanName(span)) throw Error('Add between 1 and 4,000 characters of text.');
     await ready();
     const epoch = await db.run(['meta'], 'readonly', tx => meta(tx, 'epoch'));
     const parent = parentId === null ? null : await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(parentId)));
     if (parentId !== null) { await validateCapture(parent); if (spanKey(parent.span) !== spanKey(span)) throw Error('Reply in the original Attention Span.'); }
-    const record = { id: crypto.randomUUID(), text, hash: await sha256(text), createdAt: new Date().toISOString(), span, sample: false, ...(parent ? { parentId } : {}) };
-    await db.run(['captures', 'meta', 'spans'], 'readwrite', async tx => {
+    const id = requestId ? await stableId(`capture:${requestId}:${epoch ?? 'initial'}`) : crypto.randomUUID();
+    if (requestId) {
+      const prior = await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(id)));
+      if (prior) {
+        try { await validateCapture(prior); }
+        catch (error) { if (!(error instanceof IntegrityError)) throw error; await recover(); }
+      }
+    }
+    const record = { id, text, hash: await sha256(text), createdAt: new Date().toISOString(), span, sample: false, ...(parent ? { parentId } : {}) };
+    const expected = await db.run(['captures', 'meta', 'spans'], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset while saving. Your draft is still here.');
       const destination = await request(tx.objectStore('spans').get(spanKey(span)));
       if (!validSpan(destination)) throw Error('Create the Attention Span before posting in it.');
       if (parent && !same(await request(tx.objectStore('captures').get(parentId)), parent)) throw Error('The parent changed while you were replying. Reopen the thread.');
-      const captures = tx.objectStore('captures'); ensureCapacity(await request(captures.getAll()), [record]);
-      await request(captures.add(record)); await setMeta(tx, 'initialized', true);
+      const captures = tx.objectStore('captures'), prior = await request(captures.get(record.id));
+      if (prior) {
+        if (prior.text !== text || prior.span !== span || (prior.parentId ?? null) !== parentId || prior.sample !== false) throw Error('This capture request ID already belongs to different text. Nothing was overwritten.');
+        return prior;
+      }
+      ensureCapacity(await request(captures.getAll()), [record]);
+      await request(captures.add(record)); await setMeta(tx, 'initialized', true); return record;
     });
     const actual = await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(record.id)));
     await validateCapture(actual);
-    if (!same(actual, record)) throw Error('The save could not be read back exactly. Your draft is still here.');
+    if (!same(actual, expected)) throw Error('The save could not be read back exactly. Your draft is still here.');
     notify(); return clone(actual);
   }
   async function replace(state) {
     await ready(); state = await validateState(state); const epoch = crypto.randomUUID();
+    try { if (legacy) markDraftReset(legacy); } catch { /* The transaction epoch still fences old writers. */ }
     await db.run(TABLES, 'readwrite', async tx => {
       for (const table of TABLES) await request(tx.objectStore(table).clear());
       for (const capture of state.captures) await request(tx.objectStore('captures').put(capture));
       for (const record of state.recovery) await request(tx.objectStore('quarantine').put(record));
       for (const span of state.spans) await request(tx.objectStore('spans').put(span));
+      for (const draft of state.drafts) await request(tx.objectStore('drafts').put(draft));
       for (const table of INTENT_TABLES) for (const row of state[table]) await request(tx.objectStore(table).put(row));
-      await setMeta(tx, 'intentInitialized', true);
+      await setMeta(tx, 'intentInitialized', true); await setMeta(tx, 'draftLegacyClosed', true);
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false); await setMeta(tx, 'epoch', epoch);
       await setMeta(tx, 'initialized', true); await setMeta(tx, 'legacyChecked', true);
     });
     try { legacy?.removeItem(KEY); }
     catch { notify(); throw Error('The active workspace was cleared, but its previous-format browser copy could not be removed.'); }
-    notify(); return read();
+    notify(); return read({ includeDrafts: false });
   }
   async function reset() { return replace(blank()); }
-  async function exportData() {
-    const payload = await read(); await validateState(payload);
+  async function exportData({ draftCopies = [] } = {}) {
+    const payload = await read();
+    if (!Array.isArray(draftCopies) || draftCopies.length > 1000) throw Error('Too many emergency draft copies for one backup.');
+    for (const copy of draftCopies) {
+      if (copy.raw === null || copy.raw === undefined) continue;
+      if (typeof copy.raw !== 'string' || typeof copy.source !== 'string' || copy.source.length > 128) throw Error('An emergency draft copy has an invalid format.');
+      const record = await recoveryRecord('draft', copy.source, copy.raw, String(copy.reason ?? 'Unverified emergency or legacy draft copy.').slice(0, 500));
+      if (!payload.recovery.some(r => r.id === record.id)) payload.recovery.push(record);
+    }
+    await validateState(payload);
     const raw = JSON.stringify({ payload, sha256: await sha256(JSON.stringify(payload)) }, null, 2);
     if (new TextEncoder().encode(raw).length > LIMITS.backupBytes) throw Error('The backup exceeds the portable size limit. No data was removed.');
     return raw;
@@ -225,8 +269,24 @@ export function createStore(options = {}) {
       throw Error('Backup checksum mismatch. Nothing was changed.');
     }
     let incoming = await validateState(bundle.payload); const continuityPlan = await continuity.prepareRestore(incoming, { legacy: bundle.payload.version < 4 }); incoming = continuityPlan.incoming;
-    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', ...INTENT_TABLES], 'readwrite', async tx => {
+    const currentDrafts = await db.run(['drafts'], 'readonly', tx => request(tx.objectStore('drafts').getAll())), draftAdds = [];
+    for (const draft of incoming.drafts) {
+      const existing = currentDrafts.find(row => row.key === draft.key);
+      if (existing && (same(existing, draft) || existing.revision > draft.revision)) continue;
+      if (existing) {
+        const { hash, ...payload } = draft;
+        const key = await stableId(`restored-draft:${draft.key}:${draft.hash}`);
+        const copy = await seal({ ...payload, key, tabId: await stableId(`restored-writer:${draft.key}:${draft.hash}`) });
+        const restored = currentDrafts.find(row => row.key === key);
+        if (restored && !same(restored, copy)) throw Error('A restored draft copy has conflicting data. Nothing was changed.');
+        if (!restored) draftAdds.push(copy);
+      } else draftAdds.push(draft);
+    }
+    if (currentDrafts.length + draftAdds.length > DRAFT_LIMITS.records || JSON.stringify([...currentDrafts, ...draftAdds]).length > DRAFT_LIMITS.total) throw Error('Restored drafts would exceed the local draft limit. Nothing was changed.');
+    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset during restore. Reopen the backup before trying again.');
+      if (!same(await request(tx.objectStore('drafts').getAll()), currentDrafts)) throw Error('A draft changed during restore. Retry with your writing kept.');
+      for (const draft of draftAdds) await request(tx.objectStore('drafts').add(draft));
       for (const table of INTENT_TABLES) if (!same(await request(tx.objectStore(table).getAll()), continuityPlan.saved[table])) throw Error('Work changed during restore. Reopen the backup before trying again.');
       if (!same(await meta(tx, 'now') ?? null, continuityPlan.saved.now)) throw Error('NOW changed during restore. Reopen the backup before trying again.');
       const captures = tx.objectStore('captures'); const existing = await request(captures.getAll()); const missing = [];
@@ -257,7 +317,7 @@ export function createStore(options = {}) {
   }
   async function seed(force = false) {
     await ready();
-    if (!force && await db.run(['meta'], 'readonly', tx => meta(tx, 'initialized'))) return read();
+    if (!force && await db.run(['meta'], 'readonly', tx => meta(tx, 'initialized'))) return read({ includeDrafts: false });
     const state = blank(); const text = "I'll review the workshop outline before lunch.\nMaybe a short walkthrough would help.\nI'm waiting for the venue to reply.\nWhat should the opening example show?\nI already sent the agenda.";
     const samples = [['Product demo', text], ['Learning', "Maybe build a small practice tool someday.\nI don't need to book the room, it is already reserved.\nWhy do interruptions make it hard to return to a task?"]];
     for (const [span, text] of samples) state.captures.push({ id: crypto.randomUUID(), text, hash: await sha256(text), createdAt: new Date().toISOString(), span, sample: true });
@@ -271,10 +331,10 @@ export function createStore(options = {}) {
       for (const event of state.intentEvents) await request(tx.objectStore('intentEvents').add(event));
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'initialized', true);
     });
-    notify(); return read();
+    notify(); return read({ includeDrafts: false });
   }
   async function close() { channel?.close(); listeners.clear(); await db.close(); }
-  const continuity = createContinuity({ db, ready, prepare: recover, notify, read, recoveryRecord });
+  const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
   return { ...continuity, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

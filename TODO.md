@@ -13,4 +13,6 @@ Outcome: bring the public EFFORT experience up to the real app's working model a
 
 Private Android app/data and existing personal writing remain separate. Preserve existing public visitor data when upgrading. Keep this objective intact across implementation slices; green narrow tests are not completion evidence for the whole product.
 
-The current continuity slice implements explicit commitment histories, self-reported receipts, drop reasons and saved return context. Exploration, durable isolated drafts for all composers, attachments, offline reopening, scale and honest assistance remain part of the full goal.
+The current continuity slice implements explicit commitment histories, self-reported receipts, drop reasons and saved return context. Exploration, attachments, offline reopening, scale and honest assistance remain part of the full goal.
+
+The draft slice now covers every composer, separate and cloned tabs, emergency recovery, reset fencing, workspace-scoped retries and version 5 backups. Offline reopen, attachments, exploration and the remaining full map stay open.

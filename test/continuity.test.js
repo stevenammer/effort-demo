@@ -109,3 +109,30 @@ test('concurrent promotion of the same exact source produces one commitment', as
   const state = await store.read(); assert.equal(deriveCommitments(state.intentEvents).filter(c => c.choice.captureId === source.id).length, 1); assert.equal(deriveCommitments(state.intentEvents).filter(c => c.state === 'ACTIVE').length, 1);
   await store.close(); await other.close();
 });
+
+test('hold request retries and concurrent tabs reuse exact return point after NOW changes', async () => {
+ const { store, another } = setup(), other = another(); await store.seed(); const original = (await store.read()).now, requestId = crypto.randomUUID();
+ const input = { summary: 'A saved place', nextAction: 'Resume here', expected: original };
+ const [a,b] = await Promise.all([store.holdPlace(input, { requestId }), other.holdPlace(input, { requestId })]); assert.deepEqual(a,b);
+ assert.equal((await store.read()).places.length, 1); const changed = await chooseText(store, 'Choose something else.');
+ assert.deepEqual(await store.holdPlace(input, { requestId }), a); assert.deepEqual((await store.read()).now, changed.now);
+ await assert.rejects(store.holdPlace({ ...input, summary: 'Different' }, { requestId }), /different return point/);
+ await assert.rejects(store.holdPlace(input, { requestId: 'invalid' }), /invalid/); await store.close(); await other.close();
+});
+
+test('hold readback failure retries without adding a duplicate', async () => {
+ const { store } = setup(); await store.seed(); const input = { summary: 'Retry after readback', expected: (await store.read()).now }, requestId = crypto.randomUUID();
+ const original = IDBObjectStore.prototype.get; let calls = 0;
+ IDBObjectStore.prototype.get = function (...args) { if (this.name === 'places' && ++calls === 2) throw Error('readback fault'); return original.apply(this, args); };
+ try { await assert.rejects(store.holdPlace(input, { requestId }), /readback fault/); } finally { IDBObjectStore.prototype.get = original; }
+ const retry = await store.holdPlace(input, { requestId }); assert.equal((await store.read()).places.length, 1); assert.equal((await store.read()).places[0].id, retry.id); await store.close();
+});
+
+test('hold in flight across reset cannot write into the new workspace', async () => {
+ const { store } = setup(); await store.seed(); const expected = (await store.read()).now, requestId = crypto.randomUUID();
+ const original = globalThis.crypto, descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto'); let release, started; const gate = new Promise(r => { release = r; }), entered = new Promise(r => { started = r; }); let blocked = false;
+ Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: original.randomUUID.bind(original), subtle: { digest: async (...args) => { if (!blocked) { blocked = true; started(); await gate; } return original.subtle.digest(...args); } } } });
+ try { const pending = store.holdPlace({ summary: 'Old workspace', expected }, { requestId }); await entered; await store.reset(); release(); await assert.rejects(pending, /changed/); }
+ finally { release(); Object.defineProperty(globalThis, 'crypto', descriptor); }
+ assert.equal((await store.read()).places.length, 0); await store.close();
+});
