@@ -4,7 +4,7 @@ import { createStore, KEY, LIMITS, SPANS } from './store.js';
 const $ = id => document.getElementById(id);
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
-let store, state, activeSpan = 'All', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true;
+let store, state, activeSpan = 'All', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, refreshing = Promise.resolve();
 let draftTimer, draftDirty = false;
 const DRAFT = `${KEY}-draft`;
 function notice(text, error = false) { $('notice').textContent = text; $('notice').classList.toggle('error', error); $('notice').hidden = false; }
@@ -68,7 +68,7 @@ function organized(capture) {
   return body;
 }
 function renderSource() {
-  const capture = state.captures.find(c => c.id === sourceId); if (!capture) return;
+  const capture = state.captures.find(c => c.id === sourceId); if (!capture) { $('source-body').replaceChildren(element('p', 'This original is no longer in the active workspace. Check Engine Room recovery or your downloaded backup.')); $('source-proof').textContent = ''; return; }
   $('show-raw').setAttribute('aria-pressed', String(rawView)); $('show-organized').setAttribute('aria-pressed', String(!rawView));
   $('source-body').replaceChildren(rawView ? element('pre', capture.text, 'raw') : organized(capture));
   $('source-proof').textContent = `Original verified · SHA-256 ${capture.hash.slice(0, 16)}… · ${capture.text.length} UTF-16 code units`;
@@ -91,7 +91,23 @@ function loadDraft() {
     }
   } catch { /* A malformed draft doesn't prevent viewing verified saved originals. */ }
 }
-async function refreshed() { state = await store.read(); storageHealthy = true; $('capture-open').disabled = false; render(); }
+function refreshed() {
+  refreshing = refreshing.catch(() => {}).then(async () => {
+    state = await store.read(); const health = await store.health();
+    storageHealthy = true; $('capture-open').disabled = false; render();
+    $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
+    $('recovery-status').textContent = health.migrationWarning || `${state.recovery.length} damaged record${state.recovery.length === 1 ? '' : 's'} preserved separately. Verified originals remain available and you can keep capturing.`;
+    $('recovery-items').replaceChildren(...state.recovery.map(record => {
+      const item = element('details'); item.append(element('summary', `${record.source}: ${record.reason}`), element('pre', record.raw, 'raw')); return item;
+    }));
+    if (health.heldNow) {
+      $('now-title').textContent = 'Your chosen step needs recovery.';
+      $('now-reason').textContent = 'Its saved reference could not be verified. Nothing else has been chosen for you. The damaged copy is preserved in Engine Room.';
+    }
+    if (sourceId && $('source-dialog').open) renderSource();
+  });
+  return refreshing;
+}
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
 addEventListener('hashchange', () => showView(['spans', 'engine'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home'));
@@ -130,7 +146,7 @@ $('restore-open').onclick = () => $('restore-file').click();
 $('restore-file').onchange = async () => {
   const file = $('restore-file').files[0]; if (!file) return;
   try {
-    if (file.size > LIMITS.backupBytes) throw Error('Choose a demo backup under 512 KB.');
+    if (file.size > LIMITS.backupBytes) throw Error('Choose a demo backup under 32 MB.');
     const added = await store.restore(await file.text()); await refreshed(); notice(`Restore verified. ${added} missing capture${added === 1 ? '' : 's'} added; existing originals kept.`);
   } catch (error) { fail(error); } finally { $('restore-file').value = ''; }
 };
@@ -144,12 +160,15 @@ async function replaceDemo(samples) {
   } catch (error) { fail(error); }
 }
 $('sample-reset').onclick = () => replaceDemo(true); $('reset').onclick = () => replaceDemo(false);
-$('lock-note').textContent = navigator.locks ? 'This browser serializes demo writes across tabs using Web Locks.' : 'Web Locks are unavailable here. Use one demo tab at a time; cross-tab writes are not guaranteed.';
+$('lock-note').textContent = 'IndexedDB transactions serialize writes across tabs. Changed records refresh when another tab saves or this window becomes active. Browser storage can still be erased: keep downloaded backups.';
 loadDraft();
 try {
-  store = createStore(localStorage); await store.seed(); await refreshed();
+  store = createStore(); await store.seed(); await refreshed();
+  store.subscribe(() => refreshed().catch(fail));
+  addEventListener('visibilitychange', () => { if (!document.hidden) refreshed().catch(fail); });
+  addEventListener('focus', () => refreshed().catch(fail));
   showView(['spans', 'engine'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home', false);
 } catch (error) {
   storageHealthy = false; state = { captures: [], now: null }; render(); $('capture-open').disabled = true; showView('engine', false);
-  fail(Error('Saved demo data could not be verified. Nothing was silently removed. You can explicitly clear this demo to recover.'));
+  fail(Error(`The local workspace could not open: ${error.message} Your saved data has not been cleared. Keep this tab open and copy any draft before retrying.`));
 }

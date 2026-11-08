@@ -12,7 +12,7 @@ The walkthrough is separate from the private app and its data. It isn't a replac
 
 ## Try it locally
 
-Needs Node 20.20 or newer. There are no runtime or development package dependencies.
+Needs Node 20.20 or newer. There are no runtime package dependencies. Tests use fake-indexeddb to exercise real transaction boundaries without a browser.
 
 ```sh
 npm ci
@@ -43,10 +43,11 @@ The existing Android source passed **41 suites and 393 tests** on November 7, 20
 - Examples are fictional. Use fictional text when trying it.
 - Demo data and drafts are stored as plaintext in this browser profile. No accounts, trackers, model calls or private services are connected.
 - Browser storage can be cleared by the browser, its owner, or other code on the same origin. Checksums detect accidental changes; they don't make the browser a trusted security boundary.
-- Web Locks serialize supported-browser writes across tabs. Where unavailable, use one demo tab; the fallback coordinates only that tab.
+- IndexedDB transactions serialize writes across tabs. Change notifications and window activation refresh the displayed workspace.
 - Classification can be wrong. A suggested category never creates a commitment or executes an action.
 - Voice, agents, notifications, cloud sync and native phone backup/restore are outside this demonstration.
-- Demo limits: 30 captures, 4,000 UTF-16 code units per capture, 80,000 total, and 512 KB per backup. A failed save preserves its draft; a conflicting or corrupt restore is refused before writing.
+- Workspace limits: 1,000 captures, 4,000 UTF-16 code units per capture, 2,000,000 total, and 32 MB per backup. A failed save preserves its draft; a conflicting or corrupt restore is refused before writing.
+- The previous browser format migrates without deleting its original copy. Damaged records are preserved in a recovery area, included in downloads, and isolated from verified originals. New capture does not depend on every old record being valid.
 
 ## Verification
 

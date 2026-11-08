@@ -2,6 +2,7 @@
 import { pathToFileURL } from 'node:url';
 import { mkdir, readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createDemoServer } from './serve.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_DIR ? pathToFileURL(`${process.env.PLAYWRIGHT_DIR}/index.mjs`) : 'playwright');
 const remote = process.env.DEMO_BASE_URL?.replace(/\/$/, '');
@@ -54,24 +55,52 @@ try {
     bundle.payload.captures[0].text = 'Changed without a checksum'; await upload(JSON.stringify(bundle));
     await page.getByText('Backup checksum mismatch. Nothing was changed.', { exact: true }).waitFor();
     assert.equal(await page.locator('#storage-count').innerText(), '3 saved originals');
-    // Real browser storage failures must leave the input and its draft intact.
-    await page.evaluate(() => { window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === 'effort-public-demo-v1') throw Error('Storage unavailable for this test'); return window.originalSetItem.call(this, k, v); }; });
+    // Inject a real database request failure rather than failing obsolete localStorage writes.
+    await page.evaluate(() => { window.originalAdd = IDBObjectStore.prototype.add; IDBObjectStore.prototype.add = function(value) { if (this.name === 'captures') throw Error('Storage unavailable for this test'); return window.originalAdd.call(this, value); }; });
     await page.locator('#capture-open').click(); await page.locator('#capture-text').fill('Keep this failed-save draft.'); await page.locator('#save-capture').click();
     await page.locator('#draft-state').getByText('Storage unavailable for this test', { exact: false }).waitFor();
     assert.equal(await page.locator('#capture-text').inputValue(), 'Keep this failed-save draft.');
-    await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+    await page.evaluate(() => { IDBObjectStore.prototype.add = window.originalAdd; });
     await page.getByRole('button', { name: 'Close capture', exact: true }).click();
-    // A broken saved-state record cannot silently erase a valid draft on reload.
-    await page.evaluate(() => localStorage.setItem('effort-public-demo-v1', '{broken'));
-    await page.reload(); await page.getByText('Saved demo data could not be verified.', { exact: false }).waitFor();
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('effort-public-demo-v1-draft')).text), 'Keep this failed-save draft.');
-    await page.reload(); assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('effort-public-demo-v1-draft')).text), 'Keep this failed-save draft.');
+    // Damage the actual database; preserve the damaged bytes and continue capture.
+    await page.evaluate(async () => {
+      const { openDatabase, request } = await import('./database.js'); const db = openDatabase();
+      await db.run(['captures'], 'readwrite', async tx => { const table = tx.objectStore('captures'); const rows = await request(table.getAll()); const damaged = rows.find(row => row.sample); damaged.text = 'Damaged fixture bytes'; await request(table.put(damaged)); }); await db.close();
+    });
+    await page.reload(); await page.locator('#capture-open').waitFor({ state: 'visible' });
+    await page.locator('[data-view="engine"]').click(); await page.locator('#recovery-status').getByText('1 damaged record preserved separately.', { exact: false }).waitFor();
+    await page.locator('#capture-open').click(); assert.equal(await page.locator('#capture-text').inputValue(), 'Keep this failed-save draft.');
+    await page.locator('#save-capture').click(); await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
+    // A second real tab must see updates without reload and must not overwrite the first.
+    const second = await context.newPage(); await second.goto(base + '/public/');
+    await second.locator('#capture-open').click(); await second.locator('#capture-text').fill('A thought from the second tab.'); await second.locator('#save-capture').click();
+    await second.locator('#capture-dialog').waitFor({ state: 'hidden' });
+    await page.locator('#storage-count').getByText('4 saved originals', { exact: true }).waitFor();
+    await second.close();
     page.once('dialog', d => d.accept()); await page.locator('#sample-reset').click();
     await page.getByText('Fictional examples loaded.', { exact: true }).waitFor();
     await page.locator('[data-view="engine"]').click(); await page.screenshot({ path: `${output}/engine-${name}.png`, fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await context.close();
   }
+  // Exercise an actual pre-upgrade visitor profile, including a damaged original.
+  const migration = await browser.newContext();
+  await migration.addInitScript(({ hash }) => {
+    if (sessionStorage.getItem('migration-fixture')) return;
+    const text = '  A pre-upgrade thought.\nKeep the spacing.  ';
+    const good = { id: '11111111-1111-4111-8111-111111111111', text, hash, createdAt: '2026-01-01T00:00:00.000Z', span: 'Learning', sample: false };
+    const bad = { ...good, id: '22222222-2222-4222-8222-222222222222', text: 'Changed bytes without a matching checksum.' };
+    const raw = JSON.stringify({ version: 1, kind: 'effort-browser-demo', captures: [good, bad], now: null });
+    localStorage.setItem('effort-public-demo-v1', raw); sessionStorage.setItem('original-fixture', raw); sessionStorage.setItem('migration-fixture', '1');
+  }, { hash: createHash('sha256').update('  A pre-upgrade thought.\nKeep the spacing.  ').digest('hex') });
+  const legacyPage = await migration.newPage(); await legacyPage.goto(base + '/public/');
+  await legacyPage.locator('[data-view="engine"]').click();
+  await legacyPage.locator('#storage-count').getByText('1 saved original', { exact: true }).waitFor();
+  assert.equal(await legacyPage.evaluate(() => localStorage.getItem('effort-public-demo-v1') === sessionStorage.getItem('original-fixture')), true);
+  await legacyPage.locator('#capture-open').click(); await legacyPage.locator('#capture-text').fill('Capture still works after migration.'); await legacyPage.locator('#save-capture').click();
+  await legacyPage.locator('#capture-dialog').waitFor({ state: 'hidden' }); await legacyPage.reload();
+  await legacyPage.locator('#storage-count').getByText('2 saved originals', { exact: true }).waitFor();
+  await migration.close();
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed storage and corrupt-cache recovery. No page errors or external requests.');
+  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. No page errors or external requests.');
 } finally { await browser.close(); if (server) await new Promise(done => server.close(done)); }
