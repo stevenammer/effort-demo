@@ -29,8 +29,8 @@ const server=http.createServer((req,res)=>{
 }); await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}/portfolio`, errors=[], outside=[];
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
-const context=await browser.newContext(); context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
-context.on('request',r=>{if(!r.url().startsWith(base+'/'))outside.push(r.url());});
+function observe(c) { c.on('page',p=>p.on('pageerror',e=>errors.push(e.message))); c.on('request',r=>{if(!r.url().startsWith(base+'/'))outside.push(r.url());}); return c; }
+const context=observe(await browser.newContext());
 async function ready(p){await p.locator('#capture-open:enabled').waitFor();}
 async function engine(p){await p.locator('[data-view="engine"]').click();}
 async function version(p){return p.evaluate(()=>new Promise(resolve=>{const channel=new MessageChannel();channel.port1.onmessage=e=>{channel.port1.close();resolve(e.data.version);};navigator.serviceWorker.controller.postMessage({type:'SHELL_STATUS'},[channel.port2]);}));}
@@ -63,15 +63,23 @@ try{
   files=a; const profile=await mkdtemp(join(tmpdir(),'effort-offline-profile-')); let persistent;
   const launch=()=>chromium.launchPersistentContext(profile,{executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
   try {
-    persistent=await launch(); let savedPage=await persistent.newPage(); await savedPage.goto(base+'/public/'); await ready(savedPage); await engine(savedPage);
+    persistent=observe(await launch()); let savedPage=await persistent.newPage(); await savedPage.goto(base+'/public/'); await ready(savedPage); await engine(savedPage);
     await savedPage.locator('#offline-status').getByText('Available offline in this browser.',{exact:false}).waitFor();
     await savedPage.locator('#capture-open').click(); await savedPage.locator('#capture-text').fill('Draft across browser restart.'); await savedPage.locator('#draft-state').getByText('Draft kept in this browser.',{exact:true}).waitFor();
-    await persistent.close(); persistent=await launch(); await persistent.setOffline(true); savedPage=await persistent.newPage(); await savedPage.goto(base+'/'); await ready(savedPage);
+    await persistent.close(); persistent=observe(await launch()); await persistent.setOffline(true); savedPage=await persistent.newPage(); await savedPage.goto(base+'/'); await ready(savedPage);
     await engine(savedPage); await savedPage.locator('#draft-recovery summary').first().click();
     const recovered=savedPage.locator('#draft-recovery-items details').filter({hasText:'Draft across browser restart.'}).first();
     await recovered.locator('summary').click(); await recovered.getByRole('button',{name:'Recover into this tab',exact:true}).click();
     await savedPage.locator('#capture-open').click(); assert.equal(await savedPage.locator('#capture-text').inputValue(),'Draft across browser restart.');
   } finally { await persistent?.close(); await rm(profile,{recursive:true,force:true}); }
+  const initialBad=next(b.files,'initial-failure'); initialBad.files.set('public/style.css',Buffer.from('/* Incorrect but harmless synthetic style bytes. */')); files=initialBad.files;
+  const firstFailure=observe(await browser.newContext());
+  try {
+    const firstPage=await firstFailure.newPage(); await firstPage.goto(base+'/public/'); await ready(firstPage); await engine(firstPage);
+    await firstPage.locator('#offline-status').getByText('The offline copy could not be prepared.',{exact:false}).waitFor();
+    await firstPage.locator('#capture-open').click(); await firstPage.locator('#capture-text').fill('Capture despite initial offline setup failure.'); await firstPage.locator('#save-capture').click(); await firstPage.locator('#capture-dialog').waitFor({state:'hidden'});
+    assert.equal(await firstPage.evaluate(async()=> (await caches.keys()).length),0);
+  } finally { await firstFailure.close(); }
   assert.deepEqual(errors,[]); assert.deepEqual(outside,[]);
-  console.log('PASS: verified real worker on repository subpath, offline reload, fresh tab and full browser restart via root, disconnected capture, explicit update with draft checks, failed-check refusal, intact writing after upgrade, and corrupt-release rollback. No page errors or external requests.');
+  console.log('PASS: verified real worker on repository subpath, offline reload, fresh tab and full browser restart via root, disconnected capture, explicit update with draft checks, failed-check refusal, intact writing after upgrade, corrupt-release rollback and continued capture after first-install failure. No page errors or external requests.');
 }finally{await context.close();await browser.close();await new Promise(resolve=>server.close(resolve));}

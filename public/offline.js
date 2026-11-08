@@ -7,7 +7,7 @@ export async function setupOffline({ status, button, beforeUpdate, serviceWorker
     button.hidden = !registration?.waiting;
     if (registration?.waiting) { status.textContent = 'An update is ready. Your writing will be checked before reloading.'; return; }
     const controller = serviceWorker.controller;
-    if (!controller) { status.textContent = 'Preparing offline reopening. Keep this page open until it is ready.'; return; }
+    if (!controller) { status.textContent = registration?.installing && registration.installing.state !== 'redundant' || registration?.active?.state === 'activating' ? 'Preparing offline reopening. Keep this page open until it is ready.' : 'The offline copy could not be prepared. Reopen while connected; the current page still works.'; return; }
     const channel = new MessageChannel();
     const ready = await new Promise(resolve => {
       const timeout = setTimeout(() => resolve(false), 3000);
