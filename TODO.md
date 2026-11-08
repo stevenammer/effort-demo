@@ -1,6 +1,6 @@
 # EFFORT public centerpiece
 
-Read [the current continuation checkpoint](docs/CURRENT_STATE.md) first. Published main and unfinished proposal work are distinguished there.
+Read [the current continuation checkpoint](docs/CURRENT_STATE.md) first. The released runtime, actual verification and remaining full-map work are distinguished there.
 
 Outcome: bring the public EFFORT experience up to the real app's working model and improve its robustness and presentation. A small classified-text demo does not satisfy this goal.
 
