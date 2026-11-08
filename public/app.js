@@ -1,3 +1,4 @@
+import { artifactBytes, artifactPreview, artifactSourceStatus, ARTIFACT_LIMITS } from './artifacts.js';
 import { EXPLORATION_DIALS, DISTILLATION_TYPES, validateProposalProvenance } from './exploration.js';
 import { setupOffline } from './offline.js';
 import { renderReading, readablePreview } from './reading.js';
@@ -17,6 +18,7 @@ const displayTitle = (text, max = 90) => {
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let shelf, workspaceEpoch, fenced = false, resetting = false;
+let artifactTarget = null, artifactEpoch, artifactSaving = false, artifactSelection = null, artifactFocusPending = false;
 let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
 const proposalPending = new Set();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
@@ -55,9 +57,11 @@ function fail(error) { notice(error.message || 'That did not finish. Your origin
 function formatDate(date) { return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(date)); }
 function showView(route, focus = true) {
   const [base, encoded] = route.split('/');
-  currentView = base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
-  try { activeSpan = base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
-  const nextThread = base === 'thread' ? encoded : null;
+  artifactSelection = base === 'artifact' ? encoded : null; artifactFocusPending = !!artifactSelection;
+  const selectedFile = artifactSelection && state?.artifacts?.find(a => a.id === artifactSelection), fileSource = selectedFile && state?.captures.find(c => c.id === selectedFile.captureId);
+  currentView = base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
+  try { activeSpan = base === 'artifact' && !fileSource ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
+  const nextThread = base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
   if (threadId !== nextThread) { if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
@@ -66,6 +70,8 @@ function showView(route, focus = true) {
   if (location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
   if (state) { renderSpans(); renderThread(); }
   if (focus) { $('main').focus(); scrollTo(0, 0); }
+  focusArtifact();
+  if (base === 'artifact' && !selectedFile) notice('This file is unavailable in the active workspace. Check Engine Room recovery or a backup.', true);
 }
 const routeFromHash = () => location.hash.slice(1) || 'home';
 const openThread = id => showView(`thread/${id}`);
@@ -151,13 +157,14 @@ function renderThread() {
   const download = element('button', 'Download original text', 'text-button'); download.onclick = () => downloadText(root.text, `effort-original-${root.id}.txt`, 'text/plain'); display.append(download);
   main.append(renderReading(root.text, { titleAlreadyShown: displayTitle(root.text, 110) }), display);
   const rootProvenance = proposalProvenance(root); if (rootProvenance) main.append(rootProvenance);
+  const rootFiles = attachedFiles(root); if (rootFiles) main.append(rootFiles);
   const grouping = element('details', undefined, 'organized-disclosure'); grouping.append(element('summary', 'See organized details'), organized(root, false)); main.append(grouping);
   const actions = element('div', undefined, 'post-actions');
   const choose = element('button', 'Choose a next step…', 'quiet'); choose.onclick = () => openSource(root.id, false);
   const reply = element('button', 'Reply', 'quiet'); reply.onclick = () => targetReply(root.id);
   const hold = element('button', 'Hold my place…', 'text-button'); hold.onclick = openHold;
   const explore = element('button', 'Explore safely…', 'text-button'); explore.onclick = () => openExplore(root.id);
-  actions.append(reply, choose, hold, explore); main.append(actions);
+  actions.append(reply, choose, hold, explore, attachButton(root)); main.append(actions);
   const children = new Map();
   for (const capture of state.captures) if (parentOf(capture)) { const list = children.get(capture.parentId) ?? []; list.push(capture); children.set(capture.parentId, list); }
   const rows = [], visited = new Set([root.id]);
@@ -168,10 +175,11 @@ function renderThread() {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
     card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
     const provenance = proposalProvenance(capture); if (provenance) card.append(provenance);
+    const files = attachedFiles(capture); if (files) card.append(files);
     const actions = element('div', undefined, 'post-actions'); const button = element('button', 'Reply to this', 'text-button'); button.onclick = () => targetReply(capture.id);
     const source = element('button', 'Original ↗', 'text-button'); source.onclick = () => openSource(capture.id, true);
     const permalink = element('a', 'Permalink', 'small'); permalink.href = `#thread/${capture.id}`;
-    actions.append(button, source, permalink); card.append(actions); if (capture.id === threadId) card.classList.add('selected-reply'); return card;
+    actions.append(button, source, permalink, attachButton(capture)); card.append(actions); if (capture.id === threadId) card.classList.add('selected-reply'); return card;
   }));
   if (!rows.length) $('thread-replies').append(element('p', 'Room for the next thought. Replies will stay attached to this post.', 'muted'));
   if (!replyTarget && !value('reply-text')) replyTarget = root.id;
@@ -179,7 +187,7 @@ function renderThread() {
   const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
   $('reply-target').textContent = validTarget ? `Replying to: ${displayTitle(target.text, 100)}` : 'Choose a reply target before saving. Your draft is still here.';
   $('reply-to-root').onclick = () => targetReply(root.id);
-  renderExplorations(root);
+  renderExplorations(root); focusArtifact();
 }
 function renderExplorations(root) {
   const host = $('thread-explorations'); host.replaceChildren();
@@ -215,6 +223,63 @@ function renderExplorations(root) {
     host.append(card);
   }
 }
+function focusArtifact() {
+  if (!artifactFocusPending || !artifactSelection) return;
+  requestAnimationFrame(() => {
+    const view = currentView === 'thread' ? $('view-thread') : $('view-spans');
+    const card = [...view.querySelectorAll('[data-artifact-id]')].find(e => e.dataset.artifactId === artifactSelection);
+    if (!card) return; artifactFocusPending = false; card.focus({ preventScroll: true }); card.scrollIntoView({ block: 'center' });
+  });
+}
+const fileSize = bytes => bytes < 1024 ? `${bytes} bytes` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+function artifactCard(row) {
+  const card = element('article', undefined, `artifact-card${row.id === artifactSelection ? ' selected-artifact' : ''}`); card.dataset.artifactId = row.id; card.tabIndex = -1;
+  let sourceStatus; try { sourceStatus = artifactSourceStatus(row, state); } catch { sourceStatus = 'recovery'; }
+  card.append(element('h4', row.name), element('p', `${fileSize(row.bytes)} · ${row.mime || 'Unspecified type'} · ${formatDate(row.at)}`, 'small'), element('p', sourceStatus === 'verified' ? 'File bytes verified · Source linked' : 'File bytes verified · Source needs recovery', 'small'));
+  const preview = artifactPreview(row);
+  if (preview) { const display = element('details', undefined, 'artifact-preview'); display.append(element('summary', 'Read text preview'), element('pre', preview.text, 'raw')); if (preview.truncated) display.append(element('p', 'Preview ends here. Download the file for its complete original bytes.', 'small')); card.append(display); }
+  else card.append(element('p', 'This file is available as an exact download.', 'small'));
+  const actions = element('div', undefined, 'post-actions'), download = element('button', 'Download original file', 'quiet');
+  download.onclick = () => { try { const url = URL.createObjectURL(new Blob([artifactBytes(row)], { type: 'application/octet-stream' })), a = element('a'); a.href = url; a.download = row.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (error) { fail(error); } };
+  const permalink = element('a', 'File permalink', 'small'); permalink.href = `#artifact/${row.id}`;
+  permalink.onclick = event => { if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); if ($('source-dialog').open) $('source-dialog').close(); showView(`artifact/${row.id}`); };
+  actions.append(download, permalink);
+  const source = element('button', sourceStatus === 'verified' ? 'Open source thought' : 'Inspect source recovery', 'text-button'); source.onclick = () => { if ($('source-dialog').open) $('source-dialog').close(); sourceStatus === 'verified' ? openThread(row.captureId) : showView('engine'); }; actions.append(source);
+  card.append(actions); const reference = element('details', undefined, 'file-reference'); reference.append(element('summary', 'Use in another thought'), element('p', 'Paste this into another thought to link this exact file. The original stays attached to its source.', 'small'), element('code', `[Connected file](#artifact/${row.id})`)); card.append(reference); const proof = element('details'); proof.append(element('summary', 'File checksum'), element('p', `SHA-256 ${row.contentHash}`, 'small file-checksum')); card.append(proof); return card;
+}
+function attachedFiles(capture) {
+  if (state.fileWarning) return element('p', state.fileWarning, 'small');
+  const rows = (state.artifacts ?? []).filter(a => a.captureId === capture.id); if (!rows.length) return null;
+  const section = element('section', undefined, 'attached-files'); section.append(element('h3', `Connected files (${rows.length})`));
+  for (const row of rows.slice().sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) section.append(artifactCard(row)); return section;
+}
+function attachButton(capture) {
+  const button = element('button', 'Attach a file…', 'text-button'); button.disabled = artifactSaving; button.onclick = () => openArtifact(capture.id); return button;
+}
+function openArtifact(captureId) {
+  if (artifactSaving || resetting || !state.captures.some(c => c.id === captureId)) return;
+  if ($('artifact-file').files.length && artifactTarget !== captureId) status('artifact-error', 'A file is still selected for the earlier thought. Save it or clear the selection before choosing a new source.');
+  else { if (!$('artifact-file').files.length) { artifactTarget = captureId; artifactEpoch = workspaceEpoch; } status('artifact-error', ''); }
+  $('artifact-target').textContent = `Source: ${displayTitle(state.captures.find(c => c.id === artifactTarget)?.text ?? 'Source needs recovery.', 200)}`;
+  $('artifact-dialog').showModal(); $('artifact-file').focus();
+}
+$('clear-artifact').onclick = () => { if (!artifactSaving) { $('artifact-file').value = ''; status('artifact-error', 'File selection cleared. Its original file is unchanged.'); } };
+$('artifact-form').onsubmit = async event => {
+  event.preventDefault(); const file = $('artifact-file').files[0]; if (!file || !artifactTarget || artifactSaving || resetting) return;
+  const captureId = artifactTarget, expectedEpoch = artifactEpoch, generation = epoch; artifactSaving = true;
+  for (const id of ['artifact-file', 'save-artifact', 'clear-artifact']) $(id).disabled = true;
+  status('artifact-error', 'Reading and verifying the original file…');
+  try {
+    if (file.size > ARTIFACT_LIMITS.fileBytes) throw Error('Choose a file up to 2 MiB.');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (generation !== epoch) return;
+    await store.attach({ captureId, name: file.name, mime: file.type || 'application/octet-stream', bytes }, { expectedEpoch });
+    await refreshed();
+    if (generation !== epoch || workspaceEpoch !== expectedEpoch) return;
+    $('artifact-file').value = ''; artifactTarget = null; $('artifact-dialog').close(); notice('File saved. Exact bytes read back and verified, with their source attached. NOW is unchanged.');
+  } catch (error) { if (generation === epoch) status('artifact-error', `${error.message} Your selected file remains here to retry. Your source thought is unchanged.`); }
+  finally { artifactSaving = false; for (const id of ['artifact-file', 'save-artifact', 'clear-artifact']) $(id).disabled = false; if (state) renderThread(); }
+};
 async function considerProposal(distillationId) {
   if (proposalPending.has(distillationId) || resetting || !storageHealthy) return;
   const expectedEpoch = workspaceEpoch, generation = epoch, route = routeFromHash();
@@ -335,7 +400,8 @@ function renderSource() {
   const capture = state.captures.find(c => c.id === sourceId); if (!capture) { $('source-body').replaceChildren(element('p', 'This original is no longer in the active workspace. Check Engine Room recovery or your downloaded backup.')); $('source-proof').textContent = ''; return; }
   $('show-raw').setAttribute('aria-pressed', String(rawView)); $('show-organized').setAttribute('aria-pressed', String(!rawView));
   const provenance = proposalProvenance(capture);
-  $('source-body').replaceChildren(...(provenance ? [provenance] : []), rawView ? element('pre', capture.text, 'raw') : organized(capture));
+  const files = attachedFiles(capture);
+  $('source-body').replaceChildren(...(provenance ? [provenance] : []), rawView ? element('pre', capture.text, 'raw') : organized(capture), ...(files ? [files] : []));
   $('source-proof').textContent = `Original verified · SHA-256 ${capture.hash.slice(0, 16)}… · ${capture.text.length} UTF-16 code units`;
 }
 function openSource(id, raw) { sourceId = id; rawView = raw; renderSource(); $('source-dialog').showModal(); }
@@ -368,12 +434,19 @@ function refreshed() {
   refreshing = refreshing.catch(() => {}).then(async () => {
     state = await store.read({ includeDrafts: false }); const health = await store.health();
     if (workspaceEpoch !== undefined && health.epoch !== workspaceEpoch) { fenced = true; adopted.clear(); status('draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); status('reply-draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); } workspaceEpoch = health.epoch;
-    storageHealthy = true; $('capture-open').disabled = booting; render();
+    storageHealthy = true; $('capture-open').disabled = booting;
+    if (artifactSelection) {
+      const file = state.artifacts?.find(a => a.id === artifactSelection), source = file && state.captures.find(c => c.id === file.captureId);
+      if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false);
+    }
+    render();
     $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
     const damagedOriginals = state.recovery.filter(record => record.source !== 'draft').length, draftCopies = state.recovery.length - damagedOriginals;
     $('recovery-status').textContent = health.migrationWarning || `${damagedOriginals} damaged record${damagedOriginals === 1 ? '' : 's'} preserved separately.${draftCopies ? ` ${draftCopies} draft recovery cop${draftCopies === 1 ? 'y' : 'ies'} also preserved.` : ''} Verified originals remain available and you can keep capturing.`;
     $('recovery-items').replaceChildren(...state.recovery.map(record => {
-      const item = element('details'); item.append(element('summary', `${record.source}: ${record.reason}`), element('pre', record.raw, 'raw')); return item;
+      const item = element('details'); item.append(element('summary', `${record.source}: ${record.reason}`), element('pre', record.raw.slice(0, 8000), 'raw'));
+      if (record.raw.length > 8000) item.append(element('p', 'Preview truncated. Download the raw recovery record for its complete preserved bytes.', 'small'));
+      const download = element('button', 'Download raw recovery record', 'text-button'); download.onclick = () => downloadText(record.raw, `effort-recovery-${record.id}.json`, 'application/json'); item.append(download); return item;
     }));
     if (health.heldNow) {
       $('now-title').textContent = 'Your chosen step needs recovery.';
@@ -474,6 +547,11 @@ function renderSpanDepth(span) {
     if (!completed.length) body.append(element('p', 'No completion receipts yet. When you mark a chosen step done, its receipt will appear here.', 'empty'));
   }
   if (span.kind === 'workspace') {
+    const library = element('details', undefined, 'panel file-library'); library.open = !!artifactSelection; library.append(element('summary', state.fileWarning ? 'Connected files unavailable' : `Connected files (${(state.artifacts ?? []).length})`), element('p', 'Exact files, linked to their source thoughts. Files with a damaged source stay downloadable here.', 'small'));
+    for (const row of (state.artifacts ?? []).slice().sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id))) library.append(artifactCard(row));
+    if (state.fileWarning) library.append(element('p', state.fileWarning, 'notice'));
+    if (!state.fileWarning && !(state.artifacts ?? []).length) library.append(element('p', 'Attach a file from a saved thought or reply. Nothing becomes a task.', 'small'));
+    body.append(library);
     body.append(element('h2', 'Chosen work'), element('p', 'Only explicit choices appear here. Captures and replies can stay thoughts.', 'muted'));
     for (const item of commitments().filter(c => ['COMMITTED', 'ACTIVE'].includes(c.state))) {
       const card = element('article', undefined, 'panel commitment-card'); card.append(element('span', item.state, 'eyebrow'), element('h3', item.choice.quote));
@@ -505,6 +583,8 @@ $('drop-form').onsubmit = async event => {
     try { render(); } catch (e) { notice(`Commitment dropped, but the view could not refresh: ${e.message}`, true); }
   } catch (error) { status('drop-error', error.message); } finally { dropSaving = false; $('save-drop').disabled = $('drop-note').disabled = false; }
 };
+
+document.addEventListener('click', event => { const link = event.target.closest?.('a[data-local-route]'); if (!link || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); if ($('source-dialog').open) $('source-dialog').close(); showView(link.dataset.localRoute); });
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
 addEventListener('hashchange', () => showView(routeFromHash()));
@@ -569,11 +649,11 @@ $('restore-file').onchange = async () => {
   const file = $('restore-file').files[0]; if (!file) return;
   try {
     if (file.size > LIMITS.backupBytes) throw Error('Choose a demo backup under 32 MB.');
-    const added = await store.restore(await file.text()); await refreshed(); notice(`Restore verified. ${added} missing capture${added === 1 ? '' : 's'} added; existing originals kept.`);
+    const added = await store.restore(await file.text()); await refreshed(); notice(`Restore verified. ${added} missing capture${added === 1 ? '' : 's'} added; existing originals kept.${state.artifacts?.length ? ` ${state.artifacts.length} connected files and their source links are available.` : ''}`);
   } catch (error) { fail(error); } finally { $('restore-file').value = ''; }
 };
 async function replaceDemo(samples) {
-  if (!confirm(samples ? 'Replace this browser demo with fictional examples? Download a backup first if you want to keep its current captures.' : 'Clear only this browser demo and its draft? This does not touch the Android app.')) return;
+  if (!confirm(samples ? 'Replace this browser demo with fictional examples? Download a backup first if you want to keep its current captures and files.' : 'Clear this browser workspace, including captures, files and drafts? Download a backup first. This does not touch the Android app.')) return;
   epoch++; resetting = true;
   try {
     if (samples) await store.seed(true); else await store.reset();
@@ -581,13 +661,14 @@ async function replaceDemo(samples) {
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
     ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
+    artifactTarget = null; artifactSelection = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
     for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name', 'explore-text', 'distill-text']) $(id).value = '';
     for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
-    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog']) if ($(id).open) $(id).close();
+    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog', 'artifact-dialog']) if ($(id).open) $(id).close();
     workspaceEpoch = (await store.health()).epoch; fenced = false;
     try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }
     await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but draft storage or cleanup failed. Check Engine Room before writing.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private EFFORT app is separate.', !!draftCleanupError);
@@ -647,7 +728,8 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size) throw Error('Wait for the current save or view to finish.');
+  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving) throw Error('Wait for the current save or view to finish.');
+  if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {
     const pending = [['capture', captureBody()]];

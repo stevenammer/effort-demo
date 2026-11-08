@@ -48,6 +48,7 @@ export function commitmentGroups(events) {
 export function deriveCommitments(events) { return [...commitmentGroups(events).values()].map(deriveCommitment); }
 export function validRoute(route) {
   if (['home', 'spans', 'engine'].includes(route)) return true;
+  if (/^artifact\//.test(route)) return validId(route.slice(9));
   if (/^thread\//.test(route)) return validId(route.slice(7));
   if (/^span\//.test(route)) { try { const encoded = route.slice(5), name = decodeURIComponent(encoded); return name === spanKey(name) && name.length >= 2 && name.length <= 40 && !/[\p{C}]/u.test(name) && encodeURIComponent(name) === encoded; } catch {} }
   return false;

@@ -1,8 +1,10 @@
+import { validRoute } from './intent.js';
 import { parseReadable } from './core/readable.js';
 export { readablePreview } from './core/readable.js';
 
 // All markup is created from a small parser vocabulary. Source text is never HTML.
 export function readingLink(value) {
+  if (typeof value === 'string' && /^#(?:thread|artifact)\//.test(value) && validRoute(value.slice(1))) return value;
   try {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) && url.hostname && !url.username && !url.password ? url.href : null;
@@ -15,7 +17,7 @@ export function renderReading(text, { document: doc = globalThis.document, headi
     for (const token of tokens) {
       if (token.type === 'link') {
         const url = readingLink(token.url);
-        if (url) { const link = node('a', token.text); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer'; parent.append(link); }
+        if (url) { const link = node('a', token.text); link.href = url; if (url.startsWith('#')) link.dataset.localRoute = url.slice(1); else link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer'; parent.append(link); }
         else parent.append(doc.createTextNode(token.text));
       } else if (['strong', 'em', 'code'].includes(token.type)) parent.append(node(token.type, token.text));
       else parent.append(doc.createTextNode(token.text));

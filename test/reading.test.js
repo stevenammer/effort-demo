@@ -28,3 +28,10 @@ test('sentence-ending URL punctuation stays visible and a heading marker require
   assert.equal(parseReadable('C# is a language\n#tag is a tag')[0].type, 'paragraph');
   assert.deepEqual(parseReadable('```text\n```keep this line\n# code, not heading\n```'), [{ type: 'code', text: '```keep this line\n# code, not heading' }]);
 });
+
+
+test('source-linked thought and file routes are local links while malformed routes remain literal', () => {
+  const id = '12345678-1234-4123-8123-123456789abc';
+  for (const kind of ['thread', 'artifact']) { const url = `#${kind}/${id}`; assert.equal(readingLink(url), url); assert.deepEqual(inline(`[Reference](${url})`), [{ type: 'link', text: 'Reference', url }]); }
+  for (const value of ['#artifact/no-id', `#artifact/${id}/../engine`, `#artifact/${id}?url=javascript:alert`, '#engine', '#thread/javascript:alert']) { assert.equal(readingLink(value), null); assert.equal(inline(`[Unsafe](${value})`).some(token => token.type === 'link'), false); }
+});

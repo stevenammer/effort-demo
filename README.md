@@ -34,7 +34,8 @@ Open `http://127.0.0.1:4174/public/`. A static host can serve the same files; th
 6. Keep your place with a short summary and return note. Deliberately choose another step, then resume the held one. The earlier commitment and original both stay saved.
 7. Mark a step done and open Proof. The receipt records your own action and is labeled self-reported. Workspace holds other commitments, return notes and drop reasons.
 8. From NOW or a thread, choose **Explore safely…**. Set the dial, write a branch, and branch from it again. Distill something as an insight, open tension, or weird but alive idea. Nothing becomes work. Outside the unhinged sandbox, **Consider as a next step…** prepares the distilled writing with its lineage attached, then opens a separate explicit choice. **Choose from original…** also remains available. Return to the exact step you left.
-9. Download a demo backup in Engine Room. Clear the demo, restore the file, then restore it again. The second restore adds no duplicates. The directory, nested replies, choice histories, completion receipts, return points, exploration trees, typed distillations and draft copies survive too. Restoring an older backup doesn't reopen completed or dropped work.
+9. Attach a file to a saved thought or reply. Read its safe text preview or download its exact bytes. Follow its file permalink, or paste its local reference into a thought in another Attention Span. Workspace keeps the connected file directory.
+10. Download a demo backup in Engine Room. Clear the demo, restore the file, then restore it again. The second restore adds no duplicates. The directory, nested replies, choice histories, completion receipts, return points, exploration trees, typed distillations and draft copies survive too. Restoring an older backup doesn't reopen completed or dropped work.
 
 [View the offline and recovery screen on a phone](docs/screens/offline-phone.png).
 
@@ -79,6 +80,8 @@ PLAYWRIGHT_DIR=/path/to/playwright node scripts/composer-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/offline-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/exploration-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/proposal-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/artifact-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/artifact-upgrade-browser-check.mjs
 ```
 
 It uses synthetic text and checks 1440px, 390px and 320px layouts, draft recovery, explicit promotion, named spans, nested replies, search, permalinks, original preservation, hold/resume, self-reported receipts, old-backup behavior, export/restore, failure recovery and absence of external requests. Set `CHROME_PATH` if Chrome isn't at `/usr/bin/google-chrome`. Screenshots go to `/tmp/effort-demo-screens` unless `DEMO_SCREEN_DIR` is set.
@@ -89,10 +92,12 @@ The offline check uses actual service workers and synthetic releases on a reposi
 
 Set `DEMO_BASE_URL=https://stevenammer.github.io/effort-demo` to run the same browser acceptance against the hosted walkthrough. It uses an isolated browser context with fictional data and doesn't connect to the private app.
 
-The exploration check exercises nested branches and all four dials, self-authored distillations, the promotion boundary, exact return context, failed-write drafts, cross-tab updates, backup restore and offline reopen. The public backup is now version 7; versions 1 through 6 remain accepted. Exploration and distillation records share a 4 MiB encoded JSON budget, with 4,000 characters per note. Checksums verify stored bytes, not truth or authorship. See [the exploration contract](docs/EXPLORATION.md) for the product decisions and remaining limits.
+The exploration check exercises nested branches and all four dials, self-authored distillations, the promotion boundary, exact return context, failed-write drafts, cross-tab updates, backup restore and offline reopen. The public backup is now version 8; versions 1 through 7 remain accepted. Exploration and distillation records share a 4 MiB encoded JSON budget, with 4,000 characters per note. Checksums verify stored bytes, not truth or authorship. See [the exploration contract](docs/EXPLORATION.md) for the product decisions and remaining limits.
 
 ## Attribution
 
 Product requirements and decisions: Steven Ammer. Implementation is AI-assisted, including this public adaptation. This is independent work and implies no employer or provider endorsement.
 
 Original demonstration code is MIT licensed. No third-party libraries, fonts or images are bundled.
+
+Connected files are stored with their exact bytes and source links, with limits of 2 MiB per file and 8 MiB combined encoded JSON. Text/plain previews are passive and bounded; other types are downloadable. See [the file and recovery contract](docs/ARTIFACTS.md). CI also runs `npm run check:syntax` for the browser entry point.

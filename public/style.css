@@ -872,3 +872,14 @@ textarea {
 .proposal-provenance { margin:1rem 0; padding:1rem; border:1px solid #a99ae844; border-radius:.65rem; min-width:0; overflow-wrap:anywhere; }
 .proposal-lineage .raw { max-height:18rem; overflow:auto; }
 .distillation-card > button { margin:.4rem .6rem .4rem 0; }
+
+.attached-files { margin:1.4rem 0; min-width:0; }
+.artifact-card { border:1px solid #ffffff22; border-radius:.7rem; padding:1rem; margin:.8rem 0; min-width:0; overflow-wrap:anywhere; }
+.artifact-card h4 { margin:0 0 .6rem; }
+.artifact-card .post-actions { flex-wrap:wrap; }
+.artifact-preview .raw { max-height:18rem; overflow:auto; }
+.selected-artifact { border-color:#a99ae8; outline:1px solid #a99ae8; }
+.file-checksum { word-break:break-all; }
+input[type=file] { max-width:100%; min-width:0; }
+
+.file-reference code { display:block; overflow-wrap:anywhere; white-space:pre-wrap; padding:.7rem 0; user-select:all; }

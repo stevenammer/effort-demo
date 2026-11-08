@@ -46,6 +46,11 @@ try{
   await context.setOffline(false); await engine(page); files=b.files;
   await page.evaluate(async()=>{const reg=await navigator.serviceWorker.getRegistration();await reg.update();});
   await page.locator('#apply-update').waitFor({state:'visible'}); assert.equal(await version(page),SHELL_VERSION,'an update waits without replacing the current release');
+  const fileSource = await page.evaluate(async()=>{const {createStore}=await import('./store.js');const s=createStore();try{return (await s.read()).captures[0].id;}finally{await s.close();}});
+  await page.goto(base+'/public/#thread/'+fileSource); await page.locator('#thread-post').getByRole('button',{name:'Attach a file…',exact:true}).click();
+  await page.locator('#artifact-file').setInputFiles({name:'unfinished-file.txt',mimeType:'text/plain',buffer:Buffer.from('Selected, not yet saved.')}); await page.getByRole('button',{name:'Close file attachment',exact:true}).click(); await engine(page);
+  await page.locator('#apply-update').click(); await page.locator('#offline-status').getByText('Update paused: Save the selected file',{exact:false}).waitFor(); assert.equal(await version(page),SHELL_VERSION); assert.equal(await page.locator('#artifact-file').evaluate(e=>e.files.length),1);
+  await page.goto(base+'/public/#thread/'+fileSource); await page.locator('#thread-post').getByRole('button',{name:'Attach a file…',exact:true}).click(); await page.locator('#clear-artifact').click(); await page.getByRole('button',{name:'Close file attachment',exact:true}).click(); await engine(page);
   await page.locator('#capture-open').click(); await page.locator('#capture-text').fill('Writing kept through the update.'); await page.locator('#draft-state').getByText('Draft kept in this browser.',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Close capture',exact:true}).click();
   await page.evaluate(()=>{const put=IDBObjectStore.prototype.put;window.restorePut=()=>{IDBObjectStore.prototype.put=put;};IDBObjectStore.prototype.put=function(...args){if(this.name==='drafts')throw Error('Update write fault');return put.apply(this,args);};});

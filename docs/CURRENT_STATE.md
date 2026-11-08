@@ -34,16 +34,25 @@ Core, exploration, draft and offline/update browser regressions passed. Separate
 
 Review caught and fixed duplicate preparation after backup restoration and source changes during retry verification. An old exploration test incorrectly waited for a hidden Home element after offline Engine Room reload; it now checks the restored route before opening Home. The proposal script also checks preserved raw recovery text by opening its disclosure, instead of expecting collapsed text to be visible. See `docs/PROPOSALS.md` for the product contract.
 
+## Current candidate: connected files and cross-links
+
+The working branch is `feature/connected-artifacts-20261108`, based on published main `054bf19`. The previous proposal release remains live until this candidate clears publication. See `docs/ARTIFACTS.md` for the implemented contract.
+
+The candidate attaches exact files to saved thoughts/replies, with passive text previews, exact downloads, stable file permalinks and a Workspace file directory. Local thought/file references can connect posts across Attention Spans. Source damage doesn't make intact file bytes inaccessible. Files never create obligations or change NOW.
+
+IndexedDB is schema 6 and backup is version 8, accepting versions 1 through 7. File storage has per-file/aggregate limits, immutable checksums, deterministic retries, reset/source fences and exact restore readback. File-store failure leaves capture/NOW usable and refuses an incomplete backup. Final snapshots are revalidated before showing verified files. Large raw recovery entries have a bounded display plus complete raw download. Independent backup receipts for an identical file reuse existing data; distinct file links remain usable.
+
+The parent ran the full suite: **127 tests pass**. Browser acceptance has passed at 1440/390/320, including actual binary/full-size uploads/downloads, cross-links, permalinks, retries, backups, missing sources, large recovery copies, file-store failure, asynchronous reset and offline reload/download. The actual previously published DB5 client was upgraded to DB6 while two separate drafts, including late stale-tab writing, remained recoverable. Offline/update regression also checks a pending file selection pauses the update safely. Syntax checking was added to CI after an early local UI syntax error was caught before publication. Final fresh-checkout and hosted gates remain before calling this release published.
+
 ## Resume here
 
-1. Inspect actual Git state and read `TODO.md`, `docs/PARITY.md`, `docs/EXPLORATION.md` and `docs/PROPOSALS.md`. The tested proposal flow is already published. Don't rebuild or re-release it from the old WIP branch.
-2. Build the next usable slice: connected files and artifacts attached to saved posts, with exact bytes, source links, readable safe previews or explicit downloads, immutable originals, retry/reset protection, portable backup/restore and raw recovery. Keep capture and the selected NOW working when an attachment fails. Public built-in examples remain synthetic; user-entered files must stay within the browser workspace.
-3. Test that whole path in the browser, including failure/concurrency/backup/offline, desktop and phone layouts, and inaccessible/missing sources. Use the existing full suite and independent fresh-checkout/hosted release checks. Continue the broader map with cross-links, branch/session status and thinking moves, People/unread depth and bounded assistance.
-4. Preserve the full objective and the parity map. Do not call the overall goal complete after another narrow green slice. The final audit must inspect the complete usable experience against the owner's vision and all named requirements.
+1. Inspect actual Git status and finish the candidate's fresh-checkout/publication/hosted checks. The code and local verification are ahead of the live proposal release until publication is confirmed.
+2. Preserve the full parity map. Next complete branch/session status and reusable thinking moves, then People/unread depth and explicitly invoked bounded help. Keep the home calm and all depth in Attention Spans.
+3. Full-scope completion remains unproven. Scale/cache budgets, broader relation depth and the technical case study/completion audit still require work and real evidence. Green narrow tests are not completion of the owner’s entire goal.
 
 ## Remaining full-map work
 
-Attachments and connected artifacts/cross-links come next; branch/session status and thinking-move depth; People/Moves depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
+Finish connected-file publication; branch/session status and thinking-move depth; People/Moves depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
 
 ## Boundaries
 
