@@ -4,7 +4,7 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-Published `main` runtime is **9b9c1032c3e83e58076b0588dbef31314412384e**. The proposal flow is released and independently verified locally, in a fresh checkout and on the hosted site. The working checkout is back on `main`. The earlier `wip/derived-proposals-20261108` branch is historical; it is no longer the next place to resume. Preserve the published history and inspect real Git status before starting the next slice.
+Published `main` runtime is **81d0238902baca455b1b96f6eacd77b525218cac**. Connected files/cross-links and the earlier proposal flow are released and independently verified locally, in a fresh checkout and on the hosted site. The checkout is on `main`. Earlier WIP/feature branches are historical; inspect actual Git state and this checkpoint before resuming.
 
 The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
@@ -14,7 +14,7 @@ The release adds saved nested exploration branches, all four divergence dials, s
 
 The lead ran the full 99-test suite, fresh-checkout install and 99 tests, and the publication guard over 61 tracked files plus public history. Existing browser, draft, composer and offline/update regressions passed. Separate local and hosted exploration acceptance passed at 1440, 390 and 320px, covering keyboard navigation, both drafts/reload, failed writes, cross-tab updates, nested branches, all dials, explicit original selection/return, export/restore and offline reopening. Screenshots exposed a skip-link clipping issue that was fixed and rechecked. GitHub Actions runs **42492851705** (checks) and **42492851053** (Pages) succeeded for the published commit.
 
-## Current released slice: derived proposal preparation and explicit choice
+## Earlier proposal release: derived preparation and explicit choice
 
 A person should be able to carry a newly distilled idea forward, preserving exactly where it came from. Preparing a proposal must not create a commitment; choosing an exact detail is a second explicit action.
 
@@ -25,7 +25,7 @@ The persistence and public controls are released:
 - `derivedFromId` points to the distillation. `derivedHash` seals every proposal field except itself; the existing hash continues to verify exact text.
 - Unhinged branches refuse preparation. Repeated/concurrent requests reuse the same proposal. Readback failure can be retried without duplication. Reset epochs fence stale forms.
 - `validateProposalProvenance` returns `verified`, `recovery`, or null for an ordinary capture. It verifies text, source, span and non-sandbox lineage. Missing or damaged lineage must be visibly distinguished from verified provenance.
-- Capture validation accepts only the exact proposal shape. Browser backup is now version **7** in the released browser app, accepting versions 1 through 6. IndexedDB remains schema 5; no new tables were needed.
+- Capture validation accepts only the exact proposal shape. At that release, browser backup was version **7**, accepting versions 1 through 6. IndexedDB was schema 5; no new tables were needed.
 - Read recovery preserves intact proposal text while recording damaged provenance separately. Metadata checksum failure preserves the whole raw capture through the existing quarantine path.
 
 The lead independently ran the full suite after integration and review fixes: **108/108 tests pass**, including 22 exploration/proposal tests. `git diff --check` passes. A fresh checkout ran `npm ci --offline`, the full 108 tests and the publication guard over 64 tracked files plus public history. The shell manifest is current and its hosted bytes match the tested local manifest.
@@ -34,25 +34,25 @@ Core, exploration, draft and offline/update browser regressions passed. Separate
 
 Review caught and fixed duplicate preparation after backup restoration and source changes during retry verification. An old exploration test incorrectly waited for a hidden Home element after offline Engine Room reload; it now checks the restored route before opening Home. The proposal script also checks preserved raw recovery text by opening its disclosure, instead of expecting collapsed text to be visible. See `docs/PROPOSALS.md` for the product contract.
 
-## Current candidate: connected files and cross-links
+## Current released slice: connected files and cross-links
 
-The working branch is `feature/connected-artifacts-20261108`, based on published main `054bf19`. The previous proposal release remains live until this candidate clears publication. See `docs/ARTIFACTS.md` for the implemented contract.
+The connected-file runtime is `81d0238`, published on main. See `docs/ARTIFACTS.md` for the implemented contract.
 
-The candidate attaches exact files to saved thoughts/replies, with passive text previews, exact downloads, stable file permalinks and a Workspace file directory. Local thought/file references can connect posts across Attention Spans. Source damage doesn't make intact file bytes inaccessible. Files never create obligations or change NOW.
+The release attaches exact files to saved thoughts/replies, with passive text previews, exact downloads, stable file permalinks and a Workspace file directory. Local thought/file references can connect posts across Attention Spans. Source damage doesn't make intact file bytes inaccessible. Files never create obligations or change NOW.
 
 IndexedDB is schema 6 and backup is version 8, accepting versions 1 through 7. File storage has per-file/aggregate limits, immutable checksums, deterministic retries, reset/source fences and exact restore readback. File-store failure leaves capture/NOW usable and refuses an incomplete backup. Final snapshots are revalidated before showing verified files. Large raw recovery entries have a bounded display plus complete raw download. Independent backup receipts for an identical file reuse existing data; distinct file links remain usable.
 
-The parent ran the full suite: **127 tests pass**. Browser acceptance has passed at 1440/390/320, including actual binary/full-size uploads/downloads, cross-links, permalinks, retries, backups, missing sources, large recovery copies, file-store failure, asynchronous reset and offline reload/download. The actual previously published DB5 client was upgraded to DB6 while two separate drafts, including late stale-tab writing, remained recoverable. Offline/update regression also checks a pending file selection pauses the update safely. Syntax checking was added to CI after an early local UI syntax error was caught before publication. Final fresh-checkout and hosted gates remain before calling this release published.
+The parent ran the full suite: **127 tests pass**. Browser acceptance has passed at 1440/390/320, including actual binary/full-size uploads/downloads, cross-links, permalinks, retries, backups, missing sources, large recovery copies, file-store failure, asynchronous reset and offline reload/download. The actual previously published DB5 client was upgraded to DB6 while two separate drafts, including late stale-tab writing, remained recoverable. Offline/update regression also checks a pending file selection pauses the update safely. Syntax checking was added to CI after an early local UI syntax error was caught before publication. A fresh checkout passed `npm ci --offline`, all 127 tests, syntax checking and the publication guard over 70 tracked files plus public history. GitHub checks **42513321198** and Pages **42513320239** succeeded. The parent executed the complete file/cross-link suite against the hosted site at all three widths, including full 2 MiB uploads/downloads, safe previews, exact raw recovery downloads, restored retries, unreadable file storage, reset races and offline reload/download. No page errors or external requests were observed. The hosted asset manifest matches the tested source (manifest-file SHA-256 `8667ae617d208afc0739017a0c0999e40ba9a7806e104d5e911f07225f6d957d`).
 
 ## Resume here
 
-1. Inspect actual Git status and finish the candidate's fresh-checkout/publication/hosted checks. The code and local verification are ahead of the live proposal release until publication is confirmed.
-2. Preserve the full parity map. Next complete branch/session status and reusable thinking moves, then People/unread depth and explicitly invoked bounded help. Keep the home calm and all depth in Attention Spans.
-3. Full-scope completion remains unproven. Scale/cache budgets, broader relation depth and the technical case study/completion audit still require work and real evidence. Green narrow tests are not completion of the owner’s entire goal.
+1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.
+2. Complete branch/session status and reusable thinking moves next. Preserve exact source thought, parent/root/return links, neutral states, editable/optional moves, evidence from chosen work and the promotion boundary. Put this depth in Attention Spans and exploration, without cluttering Home.
+3. Continue People/unread depth and explicitly invoked bounded help. Full-scope completion remains unproven: scale/cache policy, broader relation depth and the technical case study/completion audit still require work and real evidence. Green narrow tests are not completion of the owner's entire goal.
 
 ## Remaining full-map work
 
-Finish connected-file publication; branch/session status and thinking-move depth; People/Moves depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
+Branch/session status and thinking-move depth; People/Moves depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
 
 ## Boundaries
 
