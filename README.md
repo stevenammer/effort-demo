@@ -2,6 +2,8 @@
 
 **Capture a thought. Keep the original. Choose one next step.**
 
+[Open the interactive walkthrough](https://stevenammer.github.io/effort-demo/).
+
 This is an interactive browser demonstration of E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts), Steven Ammer's existing personal Android app. It uses a small extract of the app's actual deterministic organisation code and fabricated examples.
 
 The walkthrough is separate from the private app and its data. It isn't a replacement phone app, a connected agent service, or an export of someone's personal workspace.
@@ -57,6 +59,8 @@ PLAYWRIGHT_DIR=/path/to/playwright node scripts/browser-check.mjs
 ```
 
 It uses synthetic text and checks 1440px, 390px and 320px layouts, draft recovery, explicit promotion, original preservation, export/restore, failure recovery and absence of external requests. Set `CHROME_PATH` if Chrome isn't at `/usr/bin/google-chrome`. Screenshots go to `/tmp/effort-demo-screens` unless `DEMO_SCREEN_DIR` is set.
+
+Set `DEMO_BASE_URL=https://stevenammer.github.io/effort-demo` to run the same browser acceptance against the hosted walkthrough. It uses an isolated browser context with fictional data and doesn't connect to the private app.
 
 ## Attribution
 

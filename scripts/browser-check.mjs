@@ -4,8 +4,10 @@ import { mkdir, readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { createDemoServer } from './serve.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_DIR ? pathToFileURL(`${process.env.PLAYWRIGHT_DIR}/index.mjs`) : 'playwright');
-const server = createDemoServer(); await new Promise(done => server.listen(0, '127.0.0.1', done));
-const base = `http://127.0.0.1:${server.address().port}`, errors = [], outside = [];
+const remote = process.env.DEMO_BASE_URL?.replace(/\/$/, '');
+const server = remote ? null : createDemoServer();
+if (server) await new Promise(done => server.listen(0, '127.0.0.1', done));
+const base = remote || `http://127.0.0.1:${server.address().port}`, errors = [], outside = [];
 const output = process.env.DEMO_SCREEN_DIR || '/tmp/effort-demo-screens'; await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
 try {
@@ -72,4 +74,4 @@ try {
   }
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
   console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed storage and corrupt-cache recovery. No page errors or external requests.');
-} finally { await browser.close(); await new Promise(done => server.close(done)); }
+} finally { await browser.close(); if (server) await new Promise(done => server.close(done)); }
