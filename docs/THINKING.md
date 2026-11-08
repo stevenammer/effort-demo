@@ -1,6 +1,6 @@
 # Thinking moves and branch continuity
 
-This slice is implemented on `feature/thinking-continuity-20261108`. Publication and broader acceptance remain separate gates. See CURRENT_STATE.md for verified evidence and remaining checks.
+This slice is implemented on `feature/thinking-continuity-20261108`. Local acceptance is complete; publication and hosted acceptance remain separate gates. See CURRENT_STATE.md for verified evidence and remaining checks.
 
 A thinking move is an optional, editable prompt. It is not an assessment of a person. The nine generic suggestions come from EFFORT's existing move library. People can change them, turn them off or add their own. No helper or provider runs when choosing a move.
 
@@ -23,4 +23,4 @@ Verification commands:
 - `npm run check:public`
 - `PLAYWRIGHT_DIR=/path/to/playwright node scripts/thinking-browser-check.mjs`
 
-Browser acceptance uses isolated synthetic data and supports `DEMO_BASE_URL`. It exercises optional selection, exact old prompts after disabling, explicit evidence, folded branch permalinks, custom-move draft reload, concurrent edit conflict/rebase, backup/reset/restore and three viewport widths. Additional reset-race, recovery and older-client browser coverage should be recorded in CURRENT_STATE.md when independently run. Unit tests alone do not establish the whole product's completion.
+Browser acceptance uses isolated synthetic data and supports `DEMO_BASE_URL`. It exercises optional selection, exact old prompts after disabling, explicit evidence, folded branch permalinks, custom-move draft reload, concurrent edit conflict/rebase, backup/reset/restore and three viewport widths. Store tests cover reset races, recovery and immutable restoration; regression browser checks cover older published clients, drafts, files, source-linked choices and offline updates. See CURRENT_STATE.md for the executed checks. Unit tests alone do not establish the whole product's completion.
