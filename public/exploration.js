@@ -2,6 +2,7 @@ import { request } from './database.js';
 import { exactKeys, validId, validDate, validHash, sha256, stableId, same, IntegrityError } from './primitives.js';
 import { seal, noteAllowed, validatePlace } from './intent.js';
 import { validateCapture } from './records.js';
+import { spanKey, validSpan } from './spans.js';
 
 export const EXPLORATION_TABLES = Object.freeze(['explorations', 'distillations']);
 export const EXPLORATION_DIALS = Object.freeze(['TIGHT', 'NORMAL', 'WILD', 'UNHINGED SANDBOX']);
@@ -62,7 +63,29 @@ export async function validateExplorationState(state) {
   if (bad.length) throw new IntegrityError(bad[0].reason);
 }
 
-export function createExploration({ db, ready = async () => {}, notify = () => {}, recoveryRecord }) {
+// A missing derivation is tolerated only when its raw record was preserved for recovery.
+export function validateProposalProvenance(capture, { captures, explorations, distillations, recovery }) {
+  if (capture.derivedFromId === undefined) return null;
+  const recorded = () => recovery.some(row => row.source === 'derivation' && row.recordId === capture.id && row.raw === JSON.stringify(capture));
+  const fail = message => { if (recorded()) return 'recovery'; throw new IntegrityError(message); };
+  if (!validId(capture.derivedFromId) || !validId(capture.parentId) || capture.sample !== false) return fail('A proposal has an invalid provenance link.');
+  const distillation = distillations.find(row => row.id === capture.derivedFromId);
+  if (!distillation) {
+    if (recovery.some(row => row.source === 'distillations' && row.recordId === capture.derivedFromId)) return 'recovery';
+    return fail('A proposal is missing its distillation provenance.');
+  }
+  const branch = explorations.find(row => row.id === distillation.explorationId);
+  if (!branch || branch.dial === 'UNHINGED SANDBOX' || branch.sourceId !== capture.parentId || capture.text !== distillation.text) return fail('A proposal does not match its distillation provenance.');
+  const source = captures.find(row => row.id === capture.parentId);
+  if (source && spanKey(source.span) !== spanKey(capture.span)) return fail('A proposal must remain in its source Attention Span.');
+  if (!source) {
+    if (recovery.some(row => row.source === 'capture' && row.recordId === capture.parentId)) return 'recovery';
+    return fail('A proposal is missing its source.');
+  }
+  return 'verified';
+}
+
+export function createExploration({ db, ready = async () => {}, notify = () => {}, recoveryRecord, ensureCapacity }) {
   async function snapshot() {
     await ready();
     return db.run(['meta', 'captures', 'places', 'quarantine', ...EXPLORATION_TABLES], 'readonly', async tx => ({
@@ -124,5 +147,36 @@ export function createExploration({ db, ready = async () => {}, notify = () => {
   async function distill({ explorationId, type, text }, { requestId, expectedEpoch } = {}) {
     return save('distillations', { explorationId, type, text }, requestId, expectedEpoch);
   }
-  return { explore, distill, repair };
+  async function prepareProposal({ distillationId }, { expectedEpoch } = {}) {
+    if (!validId(distillationId)) throw Error('The distillation ID is invalid.');
+    const state = await snapshot();
+    if (expectedEpoch !== undefined && expectedEpoch !== (state.epoch ?? null)) throw Error('The workspace changed. Reopen the distillation before preparing a proposal.');
+    await validateExplorationState(state);
+    const distillation = state.distillations.find(row => row.id === distillationId);
+    const branch = state.explorations.find(row => row.id === distillation?.explorationId);
+    if (!branch || !distillation) throw Error('The distillation needs recovery before preparing a proposal.');
+    if (branch.dial === 'UNHINGED SANDBOX') throw Error('Leave the sandbox by creating a branch with another dial before preparing a proposal.');
+    const source = state.captures.find(row => row.id === branch.sourceId), place = state.places.find(row => row.id === branch.returnPointId);
+    if (!source || !place) throw Error('The exploration provenance needs recovery.');
+    await validateCapture(source); await validatePlace(place, state.captures, state.recovery);
+    const id = await stableId(JSON.stringify(['proposal', state.epoch ?? null, distillationId]));
+    const payload = { id, text: distillation.text, hash: await sha256(distillation.text), createdAt: new Date().toISOString(), span: source.span, sample: false, parentId: source.id, derivedFromId: distillationId };
+    const record = { ...payload, derivedHash: await sha256(JSON.stringify(payload)) };
+    const matches = row => row.id === id && row.text === record.text && row.hash === record.hash && row.span === record.span && row.sample === false && row.parentId === record.parentId && row.derivedFromId === distillationId;
+    const actual = await db.run(['meta', 'captures', 'places', 'spans', ...EXPLORATION_TABLES], 'readwrite', async tx => {
+      if (await meta(tx, 'epoch') !== state.epoch) throw Error('The workspace changed. Reopen the distillation before preparing a proposal.');
+      const captures = tx.objectStore('captures'), prior = await request(captures.get(id));
+      if (prior) { if (!matches(prior)) throw Error('This proposal ID belongs to different saved writing. Nothing was changed.'); return prior; }
+      for (const name of ['captures', 'places', ...EXPLORATION_TABLES]) if (!same(await request(tx.objectStore(name).getAll()), state[name])) throw Error('The exploration changed. Refresh before preparing a proposal.');
+      if (!validSpan(await request(tx.objectStore('spans').get(spanKey(source.span))))) throw Error('The source Attention Span needs recovery.');
+      if (!ensureCapacity) throw Error('Proposal storage capacity is unavailable.');
+      ensureCapacity(state.captures, [record]);
+      await request(captures.add(record)); await request(tx.objectStore('meta').put({ key: 'initialized', value: true })); return record;
+    });
+    const verified = await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(id)));
+    await validateCapture(verified);
+    if (!same(verified, actual) || !matches(verified)) throw Error('The proposal could not be read back exactly. Keep the distillation and retry.');
+    notify(); return verified;
+  }
+  return { explore, distill, repair, prepareProposal };
 }

@@ -1,4 +1,4 @@
-import { createExploration, EXPLORATION_TABLES, validateExplorationState } from './exploration.js';
+import { createExploration, EXPLORATION_TABLES, validateExplorationState, validateProposalProvenance } from './exploration.js';
 import { stableId } from './primitives.js';
 import { validateDraft, DRAFT_LIMITS, DRAFT_RESET_MARKER, markDraftReset } from './drafts.js';
 import { createContinuity } from './continuity-store.js';
@@ -173,8 +173,24 @@ export function createStore(options = {}) {
       }
     });
   }
+  async function recoverProposalProvenance() {
+    const saved = await db.run(['captures', 'meta', 'places', 'quarantine', ...EXPLORATION_TABLES], 'readonly', async tx => ({
+      epoch: await meta(tx, 'epoch'), captures: await request(tx.objectStore('captures').getAll()), places: await request(tx.objectStore('places').getAll()), recovery: await request(tx.objectStore('quarantine').getAll()), explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()),
+    }));
+    const bad = [];
+    for (const capture of saved.captures.filter(c => c.derivedFromId)) {
+      try { await validateProposalProvenance(capture, saved); }
+      catch (error) { if (!(error instanceof IntegrityError)) throw error; bad.push(await recoveryRecord('derivation', capture.id, JSON.stringify(capture), error.message)); }
+    }
+    if (!bad.length) return;
+    await db.run(['captures', 'meta', 'quarantine', ...EXPLORATION_TABLES], 'readwrite', async tx => {
+      if (await meta(tx, 'epoch') !== saved.epoch) return;
+      for (const table of ['captures', ...EXPLORATION_TABLES]) if (!same(await request(tx.objectStore(table).getAll()), saved[table])) return;
+      for (const row of bad) await request(tx.objectStore('quarantine').put(row));
+    });
+  }
   async function read({ includeDrafts = true } = {}) {
-    await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); if (includeDrafts) await recoverDrafts();
+    await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); await recoverProposalProvenance(); if (includeDrafts) await recoverDrafts();
     return db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES, ...EXPLORATION_TABLES], 'readonly', async tx => {
       const captures = await request(tx.objectStore('captures').getAll());
       captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
@@ -348,7 +364,7 @@ export function createStore(options = {}) {
   }
   async function close() { channel?.close(); listeners.clear(); await db.close(); }
   const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
-  const exploration = createExploration({ db, ready, notify, recoveryRecord });
-  return { ...continuity, explore: exploration.explore, distill: exploration.distill, read, capture, createSpan, reset, exportData, restore, seed, health, close,
+  const exploration = createExploration({ db, ready, notify, recoveryRecord, ensureCapacity });
+  return { ...continuity, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

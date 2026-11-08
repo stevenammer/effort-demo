@@ -1,5 +1,7 @@
 # EFFORT public centerpiece
 
+Read [the current continuation checkpoint](docs/CURRENT_STATE.md) first. Published main and unfinished proposal work are distinguished there.
+
 Outcome: bring the public EFFORT experience up to the real app's working model and improve its robustness and presentation. A small classified-text demo does not satisfy this goal.
 
 - [ ] Durable capture: per-record transactional storage, nondestructive v1 migration, quarantine and recovery without blocking new captures, drafts and verified backups.

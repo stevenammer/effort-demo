@@ -1,5 +1,7 @@
 # EFFORT, a public walkthrough
 
+Development checkpoint: [current release, unfinished proposal slice and next acceptance work](docs/CURRENT_STATE.md). This branch is work in progress; the linked live walkthrough remains the tested safe-exploration release.
+
 **Capture a thought. Keep the original. Choose one next step.**
 
 [Open the interactive walkthrough](https://stevenammer.github.io/effort-demo/).

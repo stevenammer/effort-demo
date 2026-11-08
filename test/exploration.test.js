@@ -76,14 +76,14 @@ class Storage {
 const bundle = async payload => JSON.stringify({ payload, sha256: await sha256(JSON.stringify(payload)) });
 async function close(x) { await x.store.close(); await x.db.close(); }
 
-test('version 6 backup restores nested branches, typed distillation and drafts idempotently', async () => {
+test('version 7 backup restores nested branches, typed distillation and drafts idempotently', async () => {
   const a = await setup(), state = await a.store.read();
   const branch = await a.store.explore({ sourceId: a.sourceId, returnPointId: a.returnPointId, dial: 'WILD', text: 'First branch.' });
   const child = await a.store.explore({ sourceId: a.sourceId, parentId: branch.id, returnPointId: a.returnPointId, dial: 'TIGHT', text: 'A child branch.' });
   await a.store.distill({ explorationId: child.id, type: 'OPEN TENSION', text: 'My question remains open.' });
   const shelf = createDraftShelf({ database: a.db, localStorage: new Storage(), sessionStorage: new Storage(), locks: null });
   const draft = await shelf.save(`distill:${child.id}`, { explorationId: child.id, type: 'HYPOTHESIS', text: 'Unfinished thought.' });
-  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 6);
+  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 7);
   const b = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false });
   await b.restore(backup); await b.restore(backup); const restored = await b.read();
   assert.deepEqual(restored.explorations, (await a.store.read()).explorations); assert.deepEqual(restored.distillations, (await a.store.read()).distillations);
@@ -172,5 +172,68 @@ test('combined UTF-8 exploration budget rejects overflow without changing saved 
   await assert.rejects(x.store.distill({ explorationId: root.id, type: 'INSIGHT', text: 'More than the remaining budget. '.repeat(120) }), /4 MB portable limit/);
   const after = await x.db.run(['distillations'], 'readonly', tx => request(tx.objectStore('distillations').getAll()));
   assert.deepEqual(after, before); assert.equal((await x.store.read()).explorations[0].id, root.id);
+  await close(x);
+});
+
+async function proposalSetup(dial = 'NORMAL') {
+  const x = await setup();
+  const branch = await x.store.explore({ sourceId: x.sourceId, returnPointId: x.returnPointId, dial, text: 'Explore the possibility.' });
+  const distillation = await x.store.distill({ explorationId: branch.id, type: 'HYPOTHESIS', text: '  A derived idea.\nKeep exact spacing.  ' });
+  return { ...x, branch, distillation };
+}
+
+test('preparing a proposal preserves exact derived writing, never selects NOW, and retries across tabs deduplicate', async () => {
+  const x = await proposalSetup(), before = await x.store.read(), data = { distillationId: x.distillation.id };
+  const copies = await Promise.all(Array.from({ length: 8 }, () => x.store.prepareProposal(data)));
+  assert.ok(copies.every(row => row.id === copies[0].id)); const proposal = copies[0];
+  assert.equal(proposal.text, x.distillation.text); assert.equal(proposal.parentId, x.sourceId); assert.equal(proposal.derivedFromId, x.distillation.id);
+  const after = await x.store.read(); assert.deepEqual(after.now, before.now); assert.equal(after.captures.filter(c => c.id === proposal.id).length, 1);
+  const other = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false });
+  await other.restore(await x.store.exportData()); const restored = await other.read(); assert.deepEqual(restored.captures.find(c => c.id === proposal.id), proposal);
+  await x.store.choose(proposal.id, 0, proposal.text.length); assert.equal((await x.store.read()).now.quote, proposal.text);
+  await other.close(); await close(x);
+});
+
+test('sandbox distillation cannot become a proposal until a non-sandbox child is explicitly created', async () => {
+  const x = await proposalSetup('UNHINGED SANDBOX');
+  await assert.rejects(x.store.prepareProposal({ distillationId: x.distillation.id }), /sandbox/);
+  const child = await x.store.explore({ sourceId: x.sourceId, parentId: x.branch.id, returnPointId: x.returnPointId, dial: 'NORMAL', text: 'Consider carefully.' });
+  const d = await x.store.distill({ explorationId: child.id, type: 'DECISION CANDIDATE', text: 'A thought to review.' });
+  assert.equal((await x.store.prepareProposal({ distillationId: d.id })).text, d.text); await close(x);
+});
+
+test('proposal readback failure is retryable without duplicate capture', async () => {
+  const x = await proposalSetup(), add = IDBObjectStore.prototype.add, get = IDBObjectStore.prototype.get; let inserted = false;
+  try {
+    IDBObjectStore.prototype.add = function(value, ...args) { const result = add.call(this, value, ...args); if (this.name === 'captures' && value.derivedFromId) inserted = true; return result; };
+    IDBObjectStore.prototype.get = function(...args) { if (this.name === 'captures' && this.transaction.mode === 'readonly' && inserted) throw Error('proposal readback fault'); return get.apply(this, args); };
+    await assert.rejects(x.store.prepareProposal({ distillationId: x.distillation.id }), /readback fault/);
+  } finally { IDBObjectStore.prototype.add = add; IDBObjectStore.prototype.get = get; }
+  const proposal = await x.store.prepareProposal({ distillationId: x.distillation.id }); assert.equal((await x.store.read()).captures.filter(c => c.id === proposal.id).length, 1);
+  await close(x);
+});
+
+test('proposal requires the current workspace epoch and valid source provenance', async () => {
+  const x = await proposalSetup(), oldEpoch = (await x.store.health()).epoch;
+  await x.store.reset(); await assert.rejects(x.store.prepareProposal({ distillationId: x.distillation.id }, { expectedEpoch: oldEpoch }), /workspace changed/);
+  const state = await x.store.read(); assert.deepEqual(state.captures, []); assert.equal(state.now, null); await close(x);
+});
+
+test('damaged distillation preserves proposal text and marks provenance for recovery', async () => {
+  const x = await proposalSetup(), proposal = await x.store.prepareProposal({ distillationId: x.distillation.id });
+  await x.db.run(['distillations'], 'readwrite', tx => request(tx.objectStore('distillations').put({ ...x.distillation, text: 'Altered bytes.' })));
+  const state = await x.store.read(); assert.deepEqual(state.captures.find(c => c.id === proposal.id), proposal);
+  assert.ok(state.recovery.some(r => r.source === 'distillations' && r.recordId === x.distillation.id));
+  const other = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }); await other.restore(await x.store.exportData());
+  assert.deepEqual((await other.read()).captures.find(c => c.id === proposal.id), proposal);
+  await other.close(); await close(x);
+});
+
+test('proposal metadata edits are detected and the raw altered record remains recoverable', async () => {
+  const x = await proposalSetup(), proposal = await x.store.prepareProposal({ distillationId: x.distillation.id });
+  const tampered = { ...proposal, derivedFromId: crypto.randomUUID() };
+  await x.db.run(['captures'], 'readwrite', tx => request(tx.objectStore('captures').put(tampered)));
+  const state = await x.store.read(); assert.ok(!state.captures.some(c => c.id === proposal.id));
+  assert.deepEqual(JSON.parse(state.recovery.find(r => r.source === 'capture' && r.recordId === proposal.id).raw), tampered);
   await close(x);
 });
