@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="An interactive, synthetic walkthrough of EFFORT: capture a thought, keep the original, and choose one next step.">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>EFFORT · A little less to hold in your head</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the demo</a>
+  <div class="shell">
+    <aside class="rail" aria-label="Demo navigation">
+      <a href="#home" class="brand"><span class="mark" aria-hidden="true">e.</span><span>E.F.F.O.R.T.<small>Executive Function For<br>Organizing Random Thoughts</small></span></a>
+      <p class="rail-label">A little less to hold<br>in your head.</p>
+      <nav aria-label="EFFORT views">
+        <button data-view="home" aria-current="page"><span>01</span> One thing, for now</button>
+        <button data-view="spans"><span>02</span> Attention Spans</button>
+        <button data-view="engine"><span>03</span> Engine Room</button>
+      </nav>
+      <div class="rail-foot"><span class="dot"></span> Interactive demo<br><small>Synthetic examples. Your phone and private EFFORT data aren't connected.</small></div>
+    </aside>
+    <div class="content">
+      <header class="topbar"><span class="eyebrow">EFFORT / PUBLIC WALKTHROUGH</span><button id="capture-open" class="primary">+ Capture a thought</button></header>
+      <main id="main" tabindex="-1">
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <section id="view-home">
+          <div class="page-heading"><span class="eyebrow">ROOM TO THINK</span><h1>One thing,<br>for now.</h1><p>Keep the thought. Choose the next step.<br>The rest doesn't have to disappear.</p></div>
+          <article class="now-card"><div class="card-top"><span class="eyebrow">NOW</span><span id="now-origin" class="badge">Sample choice</span></div><h2 id="now-title"></h2><p id="now-reason" class="muted"></p><div class="actions"><button id="now-done" class="primary">Done with this</button><button id="now-original" class="quiet">See the original ↗</button></div></article>
+          <div class="section-heading"><h2>Nothing lost along the way.</h2><button class="text-button" data-view="spans">Open Attention Spans ↗</button></div>
+          <div id="recent" class="recent"></div>
+          <p class="footnote">Capturing something doesn't make it a task. Only your explicit choice changes NOW.</p>
+        </section>
+        <section id="view-spans" hidden>
+          <div class="page-heading compact"><span class="eyebrow">DEPTH, WHEN YOU WANT IT</span><h1>Attention Spans.</h1><p>A place to return to your thoughts, with their original wording intact.</p></div>
+          <div id="span-tabs" class="segmented" role="group" aria-label="Filter Attention Spans"></div>
+          <div id="span-entries" class="entries"></div>
+        </section>
+        <section id="view-engine" hidden>
+          <div class="page-heading compact"><span class="eyebrow">UNDER THE SURFACE</span><h1>The Engine Room.</h1><p>What's working here, what stays here, and what this demo leaves out.</p></div>
+          <div class="engine-grid"><article class="panel"><span class="eyebrow">THIS WALKTHROUGH</span><h2>Actual code.<br>Fabricated examples.</h2><p>The organiser uses an extract of EFFORT's existing deterministic classification code. It groups exact quotes. It doesn't rewrite them or call an AI model.</p><a href="../SOURCE.md">Source and demo boundaries ↗</a></article><article class="panel"><span class="eyebrow">BROWSER ONLY</span><h2 id="storage-count">Checking storage…</h2><p>Captures stay in this browser's storage. There are no accounts, trackers or provider calls. Use fictional text. Anyone with access to this browser profile can read its demo data.</p><p class="small">This is a browser demonstration, not the private Android app, its SQLite database, or a native phone backup.</p></article></div>
+          <article class="panel backup"><div><span class="eyebrow">AN EXIT DOOR</span><h2>Take the original with you.</h2><p>Download a checksum-checked demo backup. Restoring adds missing captures, preserves current originals and refuses conflicting records.</p></div><div class="actions"><button id="download" class="primary">Download demo backup</button><button id="restore-open" class="quiet">Restore demo backup</button><input id="restore-file" type="file" accept="application/json,.json" hidden></div></article>
+          <details class="panel"><summary>What is deliberately outside this demo?</summary><p>Voice capture, agent execution, the private backend, notifications and native phone backup/restore. Passing the browser tests doesn't establish an installed Android build or a production service.</p><p>Classification is heuristic and can be wrong. A category is a view, not a decision about your intent.</p><p id="lock-note" class="small"></p></details>
+          <div class="reset-row"><button id="sample-reset" class="quiet">Reload fictional examples</button><button id="reset" class="danger">Clear this demo's data</button></div>
+        </section>
+      </main>
+      <footer><span>Made by Steven Ammer with AI coding assistance.</span><a href="../README.md">About this demonstration ↗</a></footer>
+    </div>
+  </div>
+  <dialog id="capture-dialog" aria-labelledby="capture-heading"><form id="capture-form"><div class="dialog-top"><span class="eyebrow">CAPTURE FIRST</span><button type="button" class="icon-button" data-close="capture-dialog" aria-label="Close capture">×</button></div><h2 id="capture-heading">Get it out of your head.</h2><p>Try a fictional thought. Your exact words stay in this browser.</p><label for="capture-text">Original thought</label><textarea id="capture-text" rows="7" maxlength="4000" placeholder="Maybe… I need to… What if…"></textarea><label for="capture-span">Attention Span</label><select id="capture-span"><option>Unsorted</option><option>Product demo</option><option>Learning</option></select><p id="draft-state" class="small" aria-live="polite"></p><div class="actions"><button id="save-capture" class="primary" type="submit">Save original</button><button id="fill-example" class="quiet" type="button">Try a fictional example</button></div><p class="small">Saving doesn't change your chosen next step.</p></form></dialog>
+  <dialog id="source-dialog" aria-labelledby="source-heading"><div class="dialog-top"><span class="eyebrow">EXACT WORDS, ALWAYS REACHABLE</span><button class="icon-button" data-close="source-dialog" aria-label="Close original">×</button></div><h2 id="source-heading">The thought, intact.</h2><div class="segmented" role="group" aria-label="Source display"><button id="show-organized" aria-pressed="false">Organized view</button><button id="show-raw" aria-pressed="true">Original text</button></div><div id="source-body"></div><p id="source-proof" class="small"></p></dialog>
+</body>
+</html>

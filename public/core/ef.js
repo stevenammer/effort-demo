@@ -1,0 +1,35 @@
+'use strict';
+import { projectSemanticFragments } from './semantic.js';
+
+// Reversible view: nothing here writes. Raw text in, organized sections out,
+// every item carrying the exact quote and offsets it came from.
+const SECTIONS = [
+  { id: 'do', label: 'DO', types: ['explicit_commitment', 'action_candidate'] },
+  { id: 'delegate', label: 'DELEGATE', types: ['delegation'] },
+  { id: 'waiting', label: 'WAITING ON', types: ['waiting_on'] },
+  { id: 'ask', label: 'QUESTIONS', types: ['question'] },
+  { id: 'rules', label: 'DECISIONS AND RULES', types: ['decision', 'constraint'] },
+  { id: 'idea', label: 'IDEAS', types: ['idea'] },
+  { id: 'notes', label: 'NOTES', types: ['event_or_fact', 'reference', 'reflection', 'unclear'] },
+];
+
+function organizeText(sourceId, text) {
+  const fragments = projectSemanticFragments(String(sourceId), text);
+  const sections = [];
+  for (const sec of SECTIONS) {
+    const items = fragments
+      .filter((f) => sec.types.includes(f.type))
+      .map((f) => ({ key: `${sourceId}:${f.start}`, quote: f.quote, type: f.type, confidence: f.confidence, start: f.start, end: f.end }));
+    if (items.length) sections.push({ id: sec.id, label: sec.label, items });
+  }
+  return { sourceId, sections, fragmentCount: fragments.length };
+}
+
+function titleOf(text, max = 56) {
+  // A sentence ends at . ! ? followed by a space or the end, or at a line break. A dot inside cerebras.ai, 3.5 or a
+  // filename is not an ending.
+  const first = text.trim().split(/(?<=[.!?])\s+|[\n]|[.!?]$/)[0].replace(/[.!?]$/, '').trim();
+  return first.length > max ? first.slice(0, max - 1).trimEnd() + '…' : first;
+}
+
+export { SECTIONS, organizeText, titleOf };

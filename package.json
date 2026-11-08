@@ -1,0 +1,16 @@
+{
+  "name": "effort-demo",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "A synthetic browser walkthrough of EFFORT, using its existing deterministic organisation code.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test",
+    "check:public": "node scripts/check-public.mjs"
+  },
+  "engines": {
+    "node": ">=20.20.0"
+  },
+  "license": "MIT"
+}
