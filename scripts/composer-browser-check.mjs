@@ -6,9 +6,9 @@ const { chromium } = await import(process.env.PLAYWRIGHT_DIR ? pathToFileURL(`${
 const server = createDemoServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
-const errors = [], external = [];
+const errors = [], external = []; let context;
 try {
-  const context = await browser.newContext();
+  context = await browser.newContext();
   await context.route('**/*', async route => {
     const url = route.request().url(); if (!url.startsWith(base + '/')) { external.push(url); return route.abort(); }
     if (url.endsWith('/public/app.js')) {
@@ -55,4 +55,4 @@ try {
   await page.locator('#save-capture:enabled').waitFor(); assert.equal(await page.locator('#capture-text').inputValue(), 'Writing entered during cleanup');
   await page.reload(); await page.locator('#capture-open').click(); assert.equal(await page.locator('#capture-text').inputValue(), 'Writing entered during cleanup');
   assert.deepEqual(errors, []); assert.deepEqual(external, []); console.log('PASS: delayed startup protection; hold, span, drop and nested reply drafts; rapid reply route switching; later capture input survives save and reload.');
-} catch (error) { console.error('PAGE ERRORS:', errors, 'EXTERNAL:', external); throw error; } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+} catch (error) { console.error('PAGE ERRORS:', errors, 'EXTERNAL:', external); throw error; } finally { if (context) await context.unrouteAll({ behavior: 'wait' }); await browser.close(); await new Promise(resolve => server.close(resolve)); }

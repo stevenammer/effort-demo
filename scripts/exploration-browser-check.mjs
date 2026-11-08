@@ -61,6 +61,15 @@ try {
     await page.locator('#save-exploration').click();
     await page.waitForFunction(id => location.hash === `#thread/${id}`, homeNowId);
     assert.equal(await page.locator('#now-title').textContent(), initialNow, 'Home exploration must leave NOW unchanged');
+    const homeBranch = await page.evaluate(async () => { const { createStore } = await import('./store.js'); const s = createStore(); try { return (await s.read()).explorations.find(b => b.text === 'A branch started from Home.'); } finally { await s.close(); } });
+    await page.locator(`[data-branch-id="${homeBranch.id}"]`).getByRole('button', { name: 'Return to where I was', exact: true }).click();
+    await page.waitForFunction(() => location.hash === '#home');
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.locator('#now-explore').click(); await page.locator('#explore-text:enabled').waitFor(); await page.locator('#explore-text').fill('A second independent Home session.'); await page.locator('#save-exploration').click();
+    await page.locator('#explore-dialog').waitFor({ state: 'hidden' });
+    const secondHomeBranch = await page.evaluate(async () => { const { createStore } = await import('./store.js'); const s = createStore(); try { return (await s.read()).explorations.find(b => b.text === 'A second independent Home session.'); } finally { await s.close(); } });
+    assert.notEqual(secondHomeBranch.returnPointId, homeBranch.returnPointId, 'a new session needs a fresh return point even with the same Home/NOW context');
+    await page.locator(`[data-branch-id="${secondHomeBranch.id}"]`).getByRole('button', { name: 'Return to where I was', exact: true }).click(); await page.waitForFunction(() => location.hash === '#home');
     await page.goto(`${base}/public/#thread/${sourceId}`);
     await page.locator('#thread-post h1').waitFor();
 

@@ -40,18 +40,41 @@ function chain(rows, key) {
 function groups(events, key) {
   const result = new Map(); for (const event of events) { const a = result.get(event[key]) ?? []; a.push(event); result.set(event[key], a); } return result;
 }
+function unresolvedHistory(history, receipts) {
+  if (!receipts.length) return false;
+  if (!history.length) return true;
+  const ids = new Set(history.map(row => row.id)), recoveredIds = new Set(receipts.map(r => r.recordId));
+  // A new explicit event after recovery supersedes the uncertain prior history.
+  if (!recoveredIds.has(history.at(-1).id)) return false;
+  return [...recoveredIds].some(id => !ids.has(id));
+}
+function recoveryGroups(recovery, source, key) {
+  const grouped = new Map();
+  for (const entry of recovery.filter(r => r.source === source)) {
+    try { const row = JSON.parse(entry.raw); if (!validId(row[key])) continue; const entries = grouped.get(row[key]) ?? []; entries.push(entry); grouped.set(row[key], entries); } catch {}
+  }
+  return grouped;
+}
 export function deriveBranchStatuses(events, recovery = []) {
-  const result = [...groups(events, 'branchId')].map(([branchId, rows]) => { const history = chain(rows, 'branchId'), last = history.at(-1); return { branchId, status: last.status, note: last.note, evidence: last.evidence, latestId: last.id, history }; });
-  const ids = new Set(result.map(row => row.branchId));
-  for (const entry of recovery.filter(r => r.source === 'branchEvents')) { try { const row = JSON.parse(entry.raw); if (validId(row.branchId) && !ids.has(row.branchId)) { result.push({ branchId: row.branchId, status: null, note: '', evidence: false, latestId: null, history: [], recovery: true }); ids.add(row.branchId); } } catch {} }
+  const histories = groups(events, 'branchId'), recovered = recoveryGroups(recovery, 'branchEvents', 'branchId'), result = [];
+  for (const id of new Set([...histories.keys(), ...recovered.keys()])) {
+    const history = histories.has(id) ? chain(histories.get(id), 'branchId') : [], last = history.at(-1);
+    if (unresolvedHistory(history, recovered.get(id) ?? [])) result.push({ branchId: id, status: null, note: '', evidence: false, latestId: last?.id ?? null, history, recovery: true });
+    else if (last) result.push({ branchId: id, status: last.status, note: last.note, evidence: last.evidence, latestId: last.id, history });
+  }
   return result;
 }
 export function deriveMoves(events, recovery = []) {
   const result = new Map(MOVE_SEEDS.map(seed => [seed.id, { ...seed, latestId: null, history: [] }]));
-  for (const [id, rows] of groups(events, 'moveId')) { const history = chain(rows, 'moveId'), last = history.at(-1); result.set(id, { id, name: last.name, prompt: last.prompt, enabled: last.enabled, latestId: last.id, history }); }
-  for (const entry of recovery.filter(r => r.source === 'moveEvents')) { try { const row = JSON.parse(entry.raw); if (validId(row.moveId) && !events.some(event => event.moveId === row.moveId)) { const seed = result.get(row.moveId); result.set(row.moveId, { ...(seed ?? { id: row.moveId, name: 'Move definition needs recovery', prompt: '', latestId: null, history: [] }), enabled: false, recovery: true }); } } catch {} }
+  const histories = groups(events, 'moveId'), recovered = recoveryGroups(recovery, 'moveEvents', 'moveId');
+  for (const id of new Set([...histories.keys(), ...recovered.keys()])) {
+    const history = histories.has(id) ? chain(histories.get(id), 'moveId') : [], last = history.at(-1), seed = result.get(id);
+    if (unresolvedHistory(history, recovered.get(id) ?? [])) result.set(id, { ...(last ? { id, name: last.name, prompt: last.prompt, history } : seed ?? { id, name: 'Move definition needs recovery', prompt: '', history: [] }), latestId: last?.id ?? null, enabled: false, recovery: true });
+    else if (last) result.set(id, { id, name: last.name, prompt: last.prompt, enabled: last.enabled, latestId: last.id, history });
+  }
   return [...result.values()];
 }
+
 export function moveSnapshot(moveId, events, recovery = []) {
   const move = deriveMoves(events, recovery).find(item => item.id === moveId);
   if (!move || !move.enabled) throw Error('This thinking move is unavailable or turned off.');
@@ -127,15 +150,16 @@ export function createThinking({ db, ready = async () => {}, notify = () => {}, 
       });
       return prior;
     }
-    const current = table === 'branchEvents' ? deriveBranchStatuses(state.branchEvents).find(row => row.branchId === input.branchId) : deriveMoves(state.moveEvents).find(row => row.id === input.moveId);
+    const current = table === 'branchEvents' ? deriveBranchStatuses(state.branchEvents, state.recovery).find(row => row.branchId === input.branchId) : deriveMoves(state.moveEvents, state.recovery).find(row => row.id === input.moveId);
     if ((current?.latestId ?? null) !== expectedLatestId) throw Error('This thinking changed in another tab. Refresh before saving.');
     const record = await seal({ id, ...content, previousId: expectedLatestId, at: new Date().toISOString() });
     await validateThinkingState({ ...state, [table]: [...state[table], record] });
-    const inserted = await db.run(['meta', 'explorations', ...THINKING_TABLES], 'readwrite', async tx => {
+    const inserted = await db.run(['meta', 'quarantine', 'explorations', ...THINKING_TABLES], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== state.epoch) throw Error('The workspace changed. Reopen this thinking before saving.');
       const target = tx.objectStore(table), existing = await request(target.get(id));
       if (existing) { if (!matches(existing)) throw Error('This request ID belongs to different thinking.'); return existing; }
       for (const name of ['explorations', ...THINKING_TABLES]) if (!same(await request(tx.objectStore(name).getAll()), state[name])) throw Error('This thinking changed in another tab. Refresh before saving.');
+      if (!same(await request(tx.objectStore('quarantine').getAll()), state.recovery)) throw Error('Thinking recovery changed in another tab. Refresh before saving.');
       await request(target.add(record)); return record;
     });
     try { const actual = await db.run([table], 'readonly', tx => request(tx.objectStore(table).get(id))); if (!same(actual, inserted) || !matches(actual)) throw Error('The saved thinking differs from its readback.'); await validateRow(actual, table, state); notify(); return actual; }

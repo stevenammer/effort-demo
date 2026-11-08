@@ -131,3 +131,13 @@ test('the database upgrade retains pre-draft originals, spans and intent history
   assert.deepEqual(state.captures, old.captures); assert.deepEqual(state.intentEvents,old.intentEvents); assert.deepEqual(state.now,old.now); assert.equal(state.spans.length,old.spans.length);
   await upgraded.close();
 });
+
+test('thinking and status draft tombstones preserve context without reviving old editing bases', async () => {
+  const x = setup(); await x.store.read(); const shelf = x.shelf(), id = crypto.randomUUID();
+  const move = { moveId: null, name: 'My tool', prompt: 'Exact unfinished prompt.', enabled: false, expectedLatestId: null };
+  await shelf.save('move', move); assert.deepEqual((await shelf.load('move')).body, move); await shelf.clear('move', move);
+  assert.deepEqual((await shelf.load('move')).body, { ...move, name: '', prompt: '' });
+  const branch = { branchId: id, status: 'parked', note: 'Exact unfinished note.', evidence: true, expectedLatestId: crypto.randomUUID() };
+  await shelf.save(`branch:${id}`, branch); assert.deepEqual((await shelf.load(`branch:${id}`)).body, branch); await shelf.clear(`branch:${id}`, branch);
+  assert.deepEqual((await shelf.load(`branch:${id}`)).body, { ...branch, status: '', note: '', evidence: false }); await shelf.close(); await x.database.close(); await x.store.close();
+});

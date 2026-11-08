@@ -184,6 +184,7 @@ async function prepareMainFlow(page, { faultReadback = false, viewportName, widt
   await page.goto(`${base}/public/#thread/${sourceId}`); await page.locator('#thread-post h1').waitFor();
   await page.locator('#thread-explorations .distillation-card').filter({ hasText: distillationText }).waitFor();
   await page.locator('#thread-replies .thread-reply').filter({ hasText: distillationText }).waitFor();
+  await page.locator('#thread-explorations .exploration-card').filter({ hasText: branchText }).locator('.branch-promotion summary').getByText('Used for a chosen step', { exact: true }).waitFor();
   if (viewportName) await page.screenshot({ path: `/tmp/effort-proposal-${width}.png`, fullPage: true });
   return { sourceId, distillationId, proposalId: proposal.id, initialNow, initialChoice, initialEvents: initialState.intentEvents, branchText, distillationText, peer };
 }
@@ -211,7 +212,7 @@ try {
 
   const { page, context, sourceId, proposalId, distillationId, distillationText, initialChoice, initialEvents, peer } = desktopData;
 
-  // Export v7 with proposal provenance and prepare a valid version 6 migration fixture.
+  // Export v9 with proposal provenance and prepare a valid version 6 migration fixture.
   await page.locator('[data-view="engine"]').click();
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]);
   const backup = await readFile(await download.path(), 'utf8');
@@ -237,7 +238,7 @@ try {
   await restoredReply.locator('.proposal-provenance p').getByText('Prepared from your distillation. Saved links verified.', { exact: true }).waitFor();
   assert.equal((await stateOf(page)).captures.filter(row => row.id === proposalId).length, 1);
 
-  // A clean browser upgrades a version 6 backup to version 8 without fabricating proposals.
+  // A clean browser upgrades a version 6 backup to version 9 without fabricating proposals.
   const oldContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   oldContext.setDefaultTimeout(10000); routeContext(oldContext);
   const oldPage = await oldContext.newPage(); oldPage.setDefaultTimeout(10000); oldPage.on('pageerror', error => errors.push(error.message));

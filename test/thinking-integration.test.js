@@ -53,3 +53,21 @@ test('source changed only in a final snapshot is never returned as verified writ
   } finally { IDBObjectStore.prototype.getAll = getAll; }
   await close(x);
 });
+
+test('restoring a divergent thinking history refuses atomically', async () => {
+  const x = await setup(), first = await x.store.setBranchStatus({ branchId: x.branch.id, status: 'active', expectedLatestId: null }), base = await x.store.exportData();
+  const other = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }); await other.restore(base);
+  await x.store.setBranchStatus({ branchId: x.branch.id, status: 'parked', expectedLatestId: first.id });
+  await other.setBranchStatus({ branchId: x.branch.id, status: 'distilled', expectedLatestId: first.id });
+  const before = await other.read(); await assert.rejects(other.restore(await x.store.exportData()), /conflicts/); assert.deepEqual(await other.read(), before); await other.close(); await close(x);
+});
+test('thinking restore readback failure preserves committed history and allows exact retry', async () => {
+  const x = await setup(), row = await x.store.saveMove({ moveId: null, name: 'Restored tool', prompt: 'Exact restored definition.', enabled: true, expectedLatestId: null }), backup = await x.store.exportData();
+  const target = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }), add = IDBObjectStore.prototype.add, get = IDBObjectStore.prototype.get; let inserted = false, failed = false;
+  try {
+    IDBObjectStore.prototype.add = function(value, ...args) { const result = add.call(this, value, ...args); if (this.name === 'moveEvents') inserted = true; return result; };
+    IDBObjectStore.prototype.get = function(...args) { if (this.name === 'moveEvents' && this.transaction.mode === 'readonly' && inserted && !failed) { failed = true; throw Error('Thinking restore readback fault'); } return get.apply(this, args); };
+    await assert.rejects(target.restore(backup), /Thinking restore could not be verified/);
+  } finally { IDBObjectStore.prototype.add = add; IDBObjectStore.prototype.get = get; }
+  await target.restore(backup); assert.deepEqual((await target.read()).moveEvents, [row]); await target.close(); await close(x);
+});

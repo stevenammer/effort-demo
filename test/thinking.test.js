@@ -121,3 +121,32 @@ test('a changed branch checksum cannot be used to add status', async () => {
   await assert.rejects(x.thinking.setBranchStatus({ branchId: x.branch.id, status: 'parked', expectedLatestId: null }), /checksum/);
   assert.equal((await rows(x, 'branchEvents')).length, 0); await close(x);
 });
+
+test('older restored move prefix remains in recovery until an explicit new revision', async () => {
+  const x = await setup(), seed = MOVE_SEEDS[0];
+  const first = await x.store.saveMove({ moveId: seed.id, name: 'Enabled draft', prompt: 'A thought.', enabled: true, expectedLatestId: null });
+  const oldBackup = await x.store.exportData();
+  const later = await x.store.saveMove({ moveId: seed.id, name: 'Enabled draft', prompt: 'A thought.', enabled: false, expectedLatestId: first.id });
+  await x.db.run(['moveEvents'], 'readwrite', tx => request(tx.objectStore('moveEvents').put({ ...later, prompt: 'Damaged later edit.' })));
+  let state = await x.store.read(); assert.equal(deriveMoves(state.moveEvents, state.recovery).find(m => m.id === seed.id).recovery, true);
+  await x.store.restore(oldBackup); state = await x.store.read();
+  let item = deriveMoves(state.moveEvents, state.recovery).find(m => m.id === seed.id);
+  assert.equal(item.recovery, true); assert.equal(item.enabled, false); assert.equal(item.latestId, first.id); assert.equal(item.history.length, 1);
+  const chosen = await x.store.saveMove({ moveId: seed.id, name: 'Explicit replacement', prompt: 'Review this again.', enabled: true, expectedLatestId: item.latestId });
+  state = await x.store.read(); item = deriveMoves(state.moveEvents, state.recovery).find(m => m.id === seed.id);
+  assert.equal(item.enabled, true); assert.equal(item.recovery, undefined); assert.equal(item.latestId, chosen.id); assert.equal(item.history.length, 2);
+  assert.ok(state.recovery.some(r => r.source === 'moveEvents' && r.recordId === later.id)); await close(x);
+});
+
+test('older restored branch prefix does not claim stale status or evidence', async () => {
+  const x = await setup();
+  const first = await x.store.setBranchStatus({ branchId: x.branch.id, status: 'parked', expectedLatestId: null }); const oldBackup = await x.store.exportData();
+  const later = await x.store.setBranchStatus({ branchId: x.branch.id, status: 'distilled', expectedLatestId: first.id });
+  await x.db.run(['branchEvents'], 'readwrite', tx => request(tx.objectStore('branchEvents').put({ ...later, note: 'Damaged.' })));
+  await x.store.read(); await x.store.restore(oldBackup); let state = await x.store.read();
+  let item = deriveBranchStatuses(state.branchEvents, state.recovery).find(b => b.branchId === x.branch.id);
+  assert.equal(item.recovery, true); assert.equal(item.status, null); assert.equal(item.evidence, false); assert.equal(item.latestId, first.id);
+  const explicit = await x.store.setBranchStatus({ branchId: x.branch.id, status: 'weird_but_alive', expectedLatestId: first.id });
+  state = await x.store.read(); item = deriveBranchStatuses(state.branchEvents, state.recovery).find(b => b.branchId === x.branch.id);
+  assert.equal(item.status, 'weird_but_alive'); assert.equal(item.latestId, explicit.id); assert.equal(item.recovery, undefined); await close(x);
+});
