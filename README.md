@@ -4,7 +4,7 @@
 
 [Open the interactive walkthrough](https://stevenammer.github.io/effort-demo/).
 
-This is an interactive browser demonstration of E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts), Steven Ammer's existing personal Android app. It uses a small extract of the app's actual deterministic organisation code and fabricated examples.
+This is an interactive browser demonstration of E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts), Steven Ammer's existing personal Android app. Attention Spans are named places with chronological posts and nested replies. It uses a small extract of the app's actual deterministic organisation code and fabricated examples.
 
 The walkthrough is separate from the private app and its data. It isn't a replacement phone app, a connected agent service, or an export of someone's personal workspace.
 
@@ -28,7 +28,8 @@ Open `http://127.0.0.1:4174/public/`. A static host can serve the same files; th
 2. Capture a fictional thought. Close and reopen the dialog, or reload, to check its draft.
 3. Save it. The browser reads back the exact text and verifies its SHA-256 before reporting success. The existing NOW choice stays put.
 4. Deliberately choose one exact quote as the next step. Marking it done preserves the original capture.
-5. Download a demo backup in Engine Room. Clear the demo, restore the file, then restore it again. The second restore adds no duplicates.
+5. Open Attention Spans, create a named destination, and post in it. Open the thread, reply, then reply to that reply. Reload or follow a permalink to check the context.
+6. Download a demo backup in Engine Room. Clear the demo, restore the file, then restore it again. The second restore adds no duplicates. The directory and nested reply relationships survive too.
 
 ## What comes from the actual app
 
@@ -46,12 +47,12 @@ The existing Android source passed **41 suites and 393 tests** on November 7, 20
 - IndexedDB transactions serialize writes across tabs. Change notifications and window activation refresh the displayed workspace.
 - Classification can be wrong. A suggested category never creates a commitment or executes an action.
 - Voice, agents, notifications, cloud sync and native phone backup/restore are outside this demonstration.
-- Workspace limits: 1,000 captures, 4,000 UTF-16 code units per capture, 2,000,000 total, and 32 MB per backup. A failed save preserves its draft; a conflicting or corrupt restore is refused before writing.
-- The previous browser format migrates without deleting its original copy. Damaged records are preserved in a recovery area, included in downloads, and isolated from verified originals. New capture does not depend on every old record being valid.
+- Workspace limits: 100 named Attention Spans, 1,000 captures (including replies), 4,000 UTF-16 code units per capture, 2,000,000 total, and 32 MB per backup. A failed save preserves its draft; a conflicting or corrupt restore is refused before writing.
+- The previous browser format migrates without deleting its original copy. Damaged records are preserved in a recovery area, included in downloads, and isolated from verified originals. Replies whose parent needs recovery remain readable. New capture does not depend on every old record being valid.
 
 ## Verification
 
-`npm test` checks exact quote ranges, negation/possibility handling, verified storage, concurrent writes, backup round trips, idempotency and rejection of tampering. A local preview-server check also verifies path and method restrictions.
+`npm test` checks exact quote ranges, negation/possibility handling, verified storage, concurrent writes, named destinations, nested reply links, database migration, backup round trips, idempotency and rejection of tampering. A local preview-server check also verifies path and method restrictions.
 
 The optional browser acceptance script uses an existing Playwright installation:
 
@@ -59,7 +60,7 @@ The optional browser acceptance script uses an existing Playwright installation:
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/browser-check.mjs
 ```
 
-It uses synthetic text and checks 1440px, 390px and 320px layouts, draft recovery, explicit promotion, original preservation, export/restore, failure recovery and absence of external requests. Set `CHROME_PATH` if Chrome isn't at `/usr/bin/google-chrome`. Screenshots go to `/tmp/effort-demo-screens` unless `DEMO_SCREEN_DIR` is set.
+It uses synthetic text and checks 1440px, 390px and 320px layouts, draft recovery, explicit promotion, named spans, nested replies, search, permalinks, original preservation, export/restore, failure recovery and absence of external requests. Set `CHROME_PATH` if Chrome isn't at `/usr/bin/google-chrome`. Screenshots go to `/tmp/effort-demo-screens` unless `DEMO_SCREEN_DIR` is set.
 
 Set `DEMO_BASE_URL=https://stevenammer.github.io/effort-demo` to run the same browser acceptance against the hosted walkthrough. It uses an isolated browser context with fictional data and doesn't connect to the private app.
 

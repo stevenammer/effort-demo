@@ -776,3 +776,50 @@ textarea {
     transform:none
   }
 }
+
+/* Attention Spans are a directory, journal feeds and nested threads. */
+.directory-tools { display:flex; gap:1.2rem; align-items:end; margin-bottom:1.8rem; }
+.directory-tools>div { flex:1; }
+.directory-tools label { margin-top:0; }
+.span-directory { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.span-card { padding:1.5rem; border:1px solid var(--line); border-radius:12px; background:var(--panel); min-width:0; }
+.span-card h2 { font-size:1.65rem; margin:.7rem 0; overflow-wrap:anywhere; }
+.span-title { text-decoration:none; }
+.span-title:hover { text-decoration:underline; }
+.span-card p { margin-bottom:.7rem; }
+.span-preview { font-size:.8rem; padding-top:.8rem; border-top:1px solid var(--line); overflow-wrap:anywhere; }
+.feed-toolbar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.4rem; }
+.journal-post { padding:1.7rem 0; border-bottom:1px solid var(--line); min-width:0; }
+.journal-post h1 { font-size:clamp(2rem,4vw,3.3rem); max-width:25ch; overflow-wrap:anywhere; }
+.journal-post h2 { font-size:1.7rem; margin:1rem 0; overflow-wrap:anywhere; }
+.post-excerpt,.reply-body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.91rem; }
+.post-actions { display:flex; gap:1.2rem; align-items:center; flex-wrap:wrap; margin-top:.8rem; }
+.post-actions a { display:inline-flex; align-items:center; min-height:44px; }
+.reading-fragment { display:block; }
+.reading-fragment .small { display:none; }
+.reading-fragment .badge { font-size:.58rem; border:0; padding:0; }
+.journal-post .source-group { margin:1.3rem 0; }
+.original-disclosure { margin:1.5rem 0; }
+.original-disclosure summary { color:var(--muted); }
+.thread-replies { margin-bottom:2rem; }
+.thread-reply { border-left:2px solid var(--line); padding:.8rem 0 .6rem 1.2rem; margin-bottom:.8rem; }
+.thread-reply .small { margin-bottom:.5rem; }
+.thread-reply .post-actions { gap:1rem; }
+.depth-1 { margin-left:1.2rem; }
+.depth-2 { margin-left:2.4rem; }
+.depth-3 { margin-left:3.6rem; }
+.selected-reply { border-color:var(--violet); }
+#reply-form h2 { font-size:1.5rem; }
+#reply-draft-state { min-height:1.5rem; }
+@media(max-width:720px) {
+  .directory-tools { display:block; }
+  .directory-tools>button { margin-top:1rem; }
+  .span-directory { grid-template-columns:1fr; }
+  .span-card { padding:1.2rem; }
+  .thread-reply { padding-left:.75rem; }
+  .depth-1 { margin-left:.5rem; }
+  .depth-2 { margin-left:1rem; }
+  .depth-3 { margin-left:1.5rem; }
+  .feed-toolbar { align-items:start; }
+  .feed-toolbar .primary { padding-inline:.8rem; }
+}

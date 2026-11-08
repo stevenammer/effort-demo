@@ -1,26 +1,17 @@
+import { validSpanName, validSpan, initialSpans, spanKey, validateThreadLinks } from './spans.js';
 export const KEY = 'effort-public-demo-v1';
 export const LIMITS = Object.freeze({ captures: 1000, text: 4000, total: 2000000, backupBytes: 32000000, recoveryBytes: 8000000 });
 export const SPANS = Object.freeze(['Product demo', 'Learning', 'Unsorted']);
-export const clone = value => structuredClone(value);
-export const blank = () => ({ version: 2, kind: 'effort-browser-demo', captures: [], now: null, recovery: [] });
-export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-export const exactKeys = (object, keys) => object && typeof object === 'object' && !Array.isArray(object) &&
-  Object.keys(object).sort().join(',') === [...keys].sort().join(',');
-export const validDate = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT/.test(value) && Number.isFinite(Date.parse(value));
-export const validHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-export const validId = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value);
-export class IntegrityError extends Error {}
-export async function sha256(text) {
-  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
+import { clone, same, exactKeys, validDate, validHash, validId, IntegrityError, sha256 } from './primitives.js';
+export { clone, same, exactKeys, validDate, validHash, validId, IntegrityError, sha256 } from './primitives.js';
+export const blank = () => ({ version: 3, kind: 'effort-browser-demo', captures: [], now: null, recovery: [], spans: initialSpans() });
 export function textAllowed(text) {
   return typeof text === 'string' && text.trim().length > 0 && text.length <= LIMITS.text &&
     !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text);
 }
 export async function validateCapture(c) {
-  if (!exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample']) || !validId(c.id) || !textAllowed(c.text) ||
-      !validHash(c.hash) || !SPANS.includes(c.span) || typeof c.sample !== 'boolean' || !validDate(c.createdAt)) {
+  if (!(exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample']) || exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample', 'parentId'])) || !validId(c.id) || !textAllowed(c.text) ||
+      !validHash(c.hash) || !validSpanName(c.span) || (c.parentId !== undefined && (!validId(c.parentId) || c.parentId === c.id)) || typeof c.sample !== 'boolean' || !validDate(c.createdAt)) {
     throw new IntegrityError('The saved record has an invalid capture format.');
   }
   if (await sha256(c.text) !== c.hash) throw new IntegrityError('The original text could not be verified.');
@@ -38,7 +29,7 @@ export async function recoveryRecord(source, recordId, raw, reason) {
 }
 export async function validateRecovery(r) {
   if (!exactKeys(r, ['id', 'source', 'recordId', 'raw', 'reason', 'at']) || !validHash(r.id) ||
-      !['legacy-state', 'capture', 'now'].includes(r.source) || typeof r.recordId !== 'string' || r.recordId.length > 128 ||
+      !['legacy-state', 'capture', 'now', 'span'].includes(r.source) || typeof r.recordId !== 'string' || r.recordId.length > 128 ||
       typeof r.raw !== 'string' || new TextEncoder().encode(r.raw).length > LIMITS.recoveryBytes ||
       typeof r.reason !== 'string' || r.reason.length > 500 || !validDate(r.at) ||
       (await recoveryRecord(r.source, r.recordId, r.raw, r.reason)).id !== r.id) {
@@ -46,9 +37,9 @@ export async function validateRecovery(r) {
   }
 }
 export async function validateState(state) {
-  const v1 = state?.version === 1;
-  if (!exactKeys(state, v1 ? ['version', 'kind', 'captures', 'now'] : ['version', 'kind', 'captures', 'now', 'recovery']) ||
-      ![1, 2].includes(state.version) || state.kind !== 'effort-browser-demo' || !Array.isArray(state.captures) || state.captures.length > LIMITS.captures) {
+  const v1 = state?.version === 1, v3 = state?.version === 3;
+  if (!exactKeys(state, v1 ? ['version', 'kind', 'captures', 'now'] : v3 ? ['version', 'kind', 'captures', 'now', 'recovery', 'spans'] : ['version', 'kind', 'captures', 'now', 'recovery']) ||
+      ![1, 2, 3].includes(state.version) || state.kind !== 'effort-browser-demo' || !Array.isArray(state.captures) || state.captures.length > LIMITS.captures) {
     throw Error('This is not a supported EFFORT browser-demo backup.');
   }
   const ids = new Set(); let bytes = 0;
@@ -64,5 +55,10 @@ export async function validateState(state) {
     const ids = new Set();
     for (const r of state.recovery) { await validateRecovery(r); if (ids.has(r.id)) throw Error('Duplicate recovery record.'); ids.add(r.id); }
   }
-  return v1 ? { ...state, version: 2, recovery: [] } : state;
+  const recovery = v1 ? [] : state.recovery;
+  const spans = v3 ? state.spans : initialSpans(state.captures);
+  if (!Array.isArray(spans) || spans.length > 100 || spans.some(span => !validSpan(span)) || new Set(spans.map(span => span.id)).size !== spans.length) throw Error('The backup contains an invalid Attention Span directory.');
+  if (state.captures.some(c => !spans.some(span => span.id === spanKey(c.span)))) throw Error('A saved post is missing its Attention Span.');
+  validateThreadLinks(state.captures, recovery);
+  return { ...state, version: 3, recovery, spans };
 }

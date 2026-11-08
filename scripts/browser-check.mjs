@@ -81,6 +81,50 @@ try {
     await page.getByText('Fictional examples loaded.', { exact: true }).waitFor();
     await page.locator('[data-view="engine"]').click(); await page.screenshot({ path: `${output}/engine-${name}.png`, fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    // Attention Spans are actual named destinations, with durable nested threads.
+    await page.locator('[data-view="spans"]').first().click(); await page.locator('#new-span').click();
+    await page.locator('#span-name').fill('Workshop planning'); await page.locator('#save-span').click();
+    await page.locator('#directory-title').getByText('Workshop planning', { exact: true }).waitFor();
+    await page.locator('#post-to-span').click();
+    assert.equal(await page.locator('#capture-span').inputValue(), 'Workshop planning');
+    const post = 'What should the workshop opening demonstrate?\nMaybe use a small, fictional example.';
+    await page.locator('#capture-text').fill(post); await page.locator('#save-capture').click();
+    await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
+    await page.locator('#span-entries').getByRole('button', { name: 'Open thread · 0 replies', exact: true }).click();
+    const beforeReply = await page.locator('#now-title').textContent();
+    await page.locator('#thread-post summary').click();
+    const [sourceDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download original text', exact: true }).click()]);
+    assert.equal(await readFile(await sourceDownload.path(), 'utf8'), post);
+    await page.locator('#reply-text').fill('  Try the exercise before the slides.  '); await page.reload();
+    await page.locator('#thread-post h1').waitFor();
+    assert.equal(await page.locator('#reply-text').inputValue(), '  Try the exercise before the slides.  ');
+    await page.locator('#save-reply').click(); await page.locator('.thread-reply').waitFor();
+    await page.locator('.thread-reply').first().getByRole('button', { name: 'Reply to this', exact: true }).click();
+    await page.locator('#reply-text').fill('What would a useful result look like?'); await page.locator('#save-reply').click();
+    await page.locator('.thread-reply.depth-1').waitFor();
+    assert.equal(await page.locator('.thread-reply').count(), 2);
+    assert.equal(await page.locator('#now-title').textContent(), beforeReply);
+    await page.locator('.thread-reply.depth-1').getByRole('link', { name: 'Permalink', exact: true }).click(); await page.reload();
+    await page.locator('.thread-reply.depth-1.selected-reply').waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `${output}/thread-${name}.png`, fullPage: true });
+    await page.locator('#back-feed').click(); await page.locator('#back-spans').click();
+    await page.locator('#span-search').fill('useful result');
+    assert.equal(await page.locator('#span-list .span-card').count(), 1);
+    await page.locator('#span-list').getByRole('link', { name: 'Workshop planning', exact: true }).click();
+    await page.locator('#span-entries').getByRole('button', { name: 'Open thread · 2 replies', exact: true }).waitFor();
+    await page.locator('[data-view="engine"]').click();
+    const [threadDownload] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]);
+    const threadedBackup = await readFile(await threadDownload.path(), 'utf8');
+    assert.equal(JSON.parse(threadedBackup).payload.spans.some(s => s.name === 'Workshop planning'), true);
+    page.once('dialog', d => d.accept()); await page.locator('#reset').click();
+    await page.getByText('Browser demo cleared. Your private EFFORT app is separate.', { exact: true }).waitFor();
+    await page.locator('[data-view="engine"]').click(); await upload(threadedBackup);
+    await page.getByText('Restore verified. 5 missing captures added; existing originals kept.', { exact: true }).waitFor();
+    await page.locator('[data-view="spans"]').first().click(); await page.locator('#span-search').fill('');
+    await page.locator('#span-list').getByRole('link', { name: 'Workshop planning', exact: true }).click();
+    await page.locator('#span-entries').getByRole('button', { name: 'Open thread · 2 replies', exact: true }).click();
+    await page.locator('.thread-reply.depth-1').waitFor();
     await context.close();
   }
   // Exercise an actual pre-upgrade visitor profile, including a damaged original.
@@ -102,5 +146,5 @@ try {
   await legacyPage.locator('#storage-count').getByText('2 saved originals', { exact: true }).waitFor();
   await migration.close();
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. No page errors or external requests.');
+  console.log('PASS: 1440px, 390px and 320px; exact originals, draft recovery, explicit NOW choice, export/restore, tamper refusal, failed database writes, damaged-record recovery and cross-tab refresh. Custom spans, nested replies, source links, permalinks, search and threaded backup restore also passed. No page errors or external requests.');
 } finally { await browser.close(); if (server) await new Promise(done => server.close(done)); }

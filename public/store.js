@@ -1,3 +1,4 @@
+import { makeSpan, initialSpans, spanKey, validSpan, validSpanName } from './spans.js';
 import { openDatabase, request, TABLES } from './database.js';
 import { KEY, LIMITS, SPANS, blank, clone, same, exactKeys, textAllowed, sha256, validChoice,
   validateCapture, validateState, recoveryRecord, validHash, IntegrityError } from './records.js';
@@ -22,7 +23,7 @@ export function createStore(options = {}) {
   function notify() { notifyListeners(); try { channel?.postMessage({ changed: true }); } catch {} }
   if (channel) channel.onmessage = event => { if (event.data?.changed === true) notifyListeners(); };
   let initialized;
-  function ready() { return initialized ??= migrate().catch(error => { initialized = null; throw error; }); }
+  function ready() { return initialized ??= migrate().then(ensureSpans).catch(error => { initialized = null; throw error; }); }
   async function migrate() {
     if (!globalThis.crypto?.subtle) throw Error('This browser cannot verify originals. Keep the draft and open the HTTPS version.');
     if (await db.run(['meta'], 'readonly', tx => meta(tx, 'legacyChecked'))) return;
@@ -75,10 +76,39 @@ export function createStore(options = {}) {
     });
     // Preserve the original localStorage bytes as a rollback copy.
   }
+  async function ensureSpans() {
+    const snapshot = await db.run(['spans', 'captures', 'meta'], 'readonly', async tx => ({
+      epoch: await meta(tx, 'epoch'), spans: await request(tx.objectStore('spans').getAll()), captures: await request(tx.objectStore('captures').getAll()),
+    }));
+    const bad = snapshot.spans.filter(span => !validSpan(span));
+    const recovery = await Promise.all(bad.map(span => recoveryRecord('span', String(span.id).slice(0, 128), json(span), 'The Attention Span metadata could not be verified. Its raw copy was preserved.')));
+    const required = initialSpans(snapshot.captures.filter(c => validSpanName(c.span)));
+    if (!bad.length && required.every(span => snapshot.spans.some(existing => existing.id === span.id))) return;
+    await db.run(['spans', 'quarantine', 'meta'], 'readwrite', async tx => {
+      if (await meta(tx, 'epoch') !== snapshot.epoch) return;
+      const table = tx.objectStore('spans');
+      for (let i = 0; i < bad.length; i++) {
+        if (!same(await request(table.get(bad[i].id)), bad[i])) continue;
+        await request(tx.objectStore('quarantine').put(recovery[i])); await request(table.delete(bad[i].id));
+      }
+      for (const span of required) if (!await request(table.get(span.id))) await request(table.put(span));
+    });
+  }
+  async function createSpan(name) {
+    await ready(); const proposed = makeSpan(name, new Date().toISOString());
+    const actual = await db.run(['spans', 'meta'], 'readwrite', async tx => {
+      const table = tx.objectStore('spans'), existing = await request(table.get(proposed.id));
+      if (existing) return existing;
+      if (await request(table.count()) >= 100) throw Error('This workspace reached its limit of 100 Attention Spans.');
+      await request(table.add(proposed)); await setMeta(tx, 'initialized', true); return proposed;
+    });
+    if (!validSpan(actual)) throw Error('This Attention Span needs recovery before you can post in it.');
+    notify(); return actual;
+  }
   async function recover() {
     await ready();
-    const snapshot = await db.run(['captures', 'meta'], 'readonly', async tx => ({
-      captures: await request(tx.objectStore('captures').getAll()), now: (await meta(tx, 'now')) ?? null,
+    const snapshot = await db.run(['captures', 'meta', 'quarantine'], 'readonly', async tx => ({
+      captures: await request(tx.objectStore('captures').getAll()), now: (await meta(tx, 'now')) ?? null, recovery: await request(tx.objectStore('quarantine').getAll()),
     }));
     const good = [], bad = [];
     for (const capture of snapshot.captures) {
@@ -88,7 +118,23 @@ export function createStore(options = {}) {
         bad.push({ capture, recovery: await recoveryRecord('capture', String(capture.id), json(capture), error.message) });
       }
     }
-    const brokenNow = snapshot.now !== null && !validChoice(snapshot.now, good)
+    // A damaged reply relationship must not trap startup in a cycle or lose its raw original.
+    const recovery = [...snapshot.recovery, ...bad.map(item => item.recovery)];
+    const byId = new Map(good.map(c => [c.id, c]));
+    for (const capture of good) {
+      if (!capture.parentId) continue;
+      const seen = new Set([capture.id]); let current = capture, reason;
+      while (current.parentId) {
+        const parent = byId.get(current.parentId);
+        if (!parent) { if (!recovery.some(r => r.source === 'capture' && r.recordId === current.parentId)) reason = 'The reply parent is missing. The complete original was preserved for recovery.'; break; }
+        if (seen.has(parent.id)) { reason = 'The saved reply links form a cycle. The complete original was preserved for recovery.'; break; }
+        if (spanKey(parent.span) !== spanKey(capture.span)) { reason = 'The reply links cross Attention Spans. The complete original was preserved for recovery.'; break; }
+        seen.add(parent.id); current = parent;
+      }
+      if (reason) bad.push({ capture, recovery: await recoveryRecord('capture', capture.id, json(capture), reason) });
+    }
+    const active = good.filter(c => !bad.some(item => item.capture.id === c.id));
+    const brokenNow = snapshot.now !== null && !validChoice(snapshot.now, active)
       ? await recoveryRecord('now', 'now', json(snapshot.now), 'The chosen step needs its original recovered.') : null;
     if (!bad.length && !brokenNow) return;
     await db.run(['captures', 'meta', 'quarantine'], 'readwrite', async tx => {
@@ -105,12 +151,12 @@ export function createStore(options = {}) {
     });
   }
   async function read() {
-    await recover();
-    return db.run(['captures', 'meta', 'quarantine'], 'readonly', async tx => {
+    await recover(); await ensureSpans();
+    return db.run(['captures', 'meta', 'quarantine', 'spans'], 'readonly', async tx => {
       const captures = await request(tx.objectStore('captures').getAll());
       captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null,
-        recovery: await request(tx.objectStore('quarantine').getAll()) };
+        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()) };
     });
   }
   async function health() {
@@ -126,11 +172,18 @@ export function createStore(options = {}) {
       throw Error('This workspace reached its capture limit. Download a backup before clearing any data.');
     }
   }
-  async function capture(text, span = 'Unsorted') {
-    if (!textAllowed(text) || !SPANS.includes(span)) throw Error('Add between 1 and 4,000 characters of text.');
+  async function capture(text, span = 'Unsorted', parentId = null) {
+    if (!textAllowed(text) || !validSpanName(span)) throw Error('Add between 1 and 4,000 characters of text.');
     await ready();
-    const record = { id: crypto.randomUUID(), text, hash: await sha256(text), createdAt: new Date().toISOString(), span, sample: false };
-    await db.run(['captures', 'meta'], 'readwrite', async tx => {
+    const epoch = await db.run(['meta'], 'readonly', tx => meta(tx, 'epoch'));
+    const parent = parentId === null ? null : await db.run(['captures'], 'readonly', tx => request(tx.objectStore('captures').get(parentId)));
+    if (parentId !== null) { await validateCapture(parent); if (spanKey(parent.span) !== spanKey(span)) throw Error('Reply in the original Attention Span.'); }
+    const record = { id: crypto.randomUUID(), text, hash: await sha256(text), createdAt: new Date().toISOString(), span, sample: false, ...(parent ? { parentId } : {}) };
+    await db.run(['captures', 'meta', 'spans'], 'readwrite', async tx => {
+      if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset while saving. Your draft is still here.');
+      const destination = await request(tx.objectStore('spans').get(spanKey(span)));
+      if (!validSpan(destination)) throw Error('Create the Attention Span before posting in it.');
+      if (parent && !same(await request(tx.objectStore('captures').get(parentId)), parent)) throw Error('The parent changed while you were replying. Reopen the thread.');
       const captures = tx.objectStore('captures'); ensureCapacity(await request(captures.getAll()), [record]);
       await request(captures.add(record)); await setMeta(tx, 'initialized', true);
     });
@@ -160,12 +213,13 @@ export function createStore(options = {}) {
     notify(); return read();
   }
   async function replace(state) {
-    await ready(); state = await validateState(state);
+    await ready(); state = await validateState(state); const epoch = crypto.randomUUID();
     await db.run(TABLES, 'readwrite', async tx => {
       for (const table of TABLES) await request(tx.objectStore(table).clear());
       for (const capture of state.captures) await request(tx.objectStore('captures').put(capture));
       for (const record of state.recovery) await request(tx.objectStore('quarantine').put(record));
-      await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false);
+      for (const span of state.spans) await request(tx.objectStore('spans').put(span));
+      await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false); await setMeta(tx, 'epoch', epoch);
       await setMeta(tx, 'initialized', true); await setMeta(tx, 'legacyChecked', true);
     });
     try { legacy?.removeItem(KEY); }
@@ -181,12 +235,14 @@ export function createStore(options = {}) {
   }
   async function restore(raw) {
     if (typeof raw !== 'string' || new TextEncoder().encode(raw).length > LIMITS.backupBytes) throw Error('Choose a browser backup under 32 MB.');
+    await ready(); const epoch = await db.run(['meta'], 'readonly', tx => meta(tx, 'epoch'));
     const bundle = JSON.parse(raw);
     if (!exactKeys(bundle, ['payload', 'sha256']) || !validHash(bundle.sha256) || await sha256(JSON.stringify(bundle.payload)) !== bundle.sha256) {
       throw Error('Backup checksum mismatch. Nothing was changed.');
     }
     const incoming = await validateState(bundle.payload); await ready(); await recover();
-    const added = await db.run(['captures', 'meta', 'quarantine'], 'readwrite', async tx => {
+    const added = await db.run(['captures', 'meta', 'quarantine', 'spans'], 'readwrite', async tx => {
+      if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset during restore. Reopen the backup before trying again.');
       const captures = tx.objectStore('captures'); const existing = await request(captures.getAll()); const missing = [];
       for (const capture of incoming.captures) {
         const previous = existing.find(c => c.id === capture.id);
@@ -194,6 +250,10 @@ export function createStore(options = {}) {
         if (!previous) missing.push(capture);
       }
       ensureCapacity(existing, missing);
+      const directory = tx.objectStore('spans'), oldSpans = await request(directory.getAll());
+      const missingSpans = incoming.spans.filter(span => !oldSpans.some(previous => previous.id === span.id));
+      if (oldSpans.length + missingSpans.length > 100) throw Error('Restore would exceed 100 Attention Spans. Nothing was changed.');
+      for (const span of missingSpans) await request(directory.add(span));
       for (const capture of missing) await request(captures.add(capture));
       for (const record of incoming.recovery) if (!await request(tx.objectStore('quarantine').get(record.id))) await request(tx.objectStore('quarantine').put(record));
       if (!await meta(tx, 'now')) {
@@ -221,6 +281,6 @@ export function createStore(options = {}) {
     notify(); return read();
   }
   async function close() { channel?.close(); listeners.clear(); await db.close(); }
-  return { read, capture, choose, complete, reset, exportData, restore, seed, health, close,
+  return { read, capture, createSpan, choose, complete, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

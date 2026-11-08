@@ -1,6 +1,6 @@
 export const DB_NAME = 'effort-public-demo';
-export const DB_VERSION = 1;
-export const TABLES = Object.freeze(['captures', 'meta', 'quarantine', 'drafts']);
+export const DB_VERSION = 2;
+export const TABLES = Object.freeze(['captures', 'meta', 'quarantine', 'drafts', 'spans']);
 
 export function request(req) {
   return new Promise((resolve, reject) => {
@@ -21,7 +21,7 @@ export function openDatabase({ factory = globalThis.indexedDB, name = DB_NAME } 
         }
       };
       req.onblocked = () => { settled = true; opening = null; reject(Error('Another EFFORT tab needs to close before the local database can upgrade. Your existing data is unchanged.')); };
-      req.onerror = () => { opening = null; reject(req.error || Error('The local database could not open.')); };
+      req.onerror = () => { opening = null; reject(req.error?.name === 'VersionError' ? Error('This tab is older than the saved EFFORT workspace. Reload to use the newer version. Your data is unchanged.') : req.error || Error('The local database could not open.')); };
       req.onsuccess = () => {
         const db = req.result;
         if (settled) { db.close(); return; }

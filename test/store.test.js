@@ -118,3 +118,25 @@ test('bounded input and native-format backups are refused without mutation',asyn
   const payload={version:2,kind:'native-phone-backup',captures:[],now:null,recovery:[]};await assert.rejects(store.restore(JSON.stringify({payload,sha256:await sha256(JSON.stringify(payload))})),/not a supported/);
   assert.equal(await store.exportData(),before);await store.close();
 });
+
+test('a capture delayed before commit cannot resurrect data after an explicit reset', async () => {
+  const { store } = setup(); await store.seed();
+  const original = crypto.subtle.digest.bind(crypto.subtle); let entered, release;
+  const reached = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+  crypto.subtle.digest = async function(algorithm, data) { if (new TextDecoder().decode(data) === 'Delayed before reset.') { entered(); await gate; } return original(algorithm, data); };
+  try {
+    const pending = store.capture('Delayed before reset.'); await reached; await store.reset(); release();
+    await assert.rejects(pending, /reset while saving/); assert.equal((await store.read()).captures.length, 0);
+  } finally { release(); crypto.subtle.digest = original; await store.close(); }
+});
+
+test('a restore delayed during verification cannot undo a later explicit reset', async () => {
+  const { store } = setup(); await store.seed(); const backup = await store.exportData(), payload = JSON.stringify(JSON.parse(backup).payload);
+  const original = crypto.subtle.digest.bind(crypto.subtle); let entered, release;
+  const reached = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+  crypto.subtle.digest = async function(algorithm, data) { if (new TextDecoder().decode(data) === payload) { entered(); await gate; } return original(algorithm, data); };
+  try {
+    const pending = store.restore(backup); await reached; await store.reset(); release();
+    await assert.rejects(pending, /reset during restore/); assert.equal((await store.read()).captures.length, 0);
+  } finally { release(); crypto.subtle.digest = original; await store.close(); }
+});

@@ -34,9 +34,19 @@
           <p class="footnote">Capturing something doesn't make it a task. Only your explicit choice changes NOW.</p>
         </section>
         <section id="view-spans" hidden>
-          <div class="page-heading compact"><span class="eyebrow">DEPTH, WHEN YOU WANT IT</span><h1>Attention Spans.</h1><p>A place to return to your thoughts, with their original wording intact.</p></div>
-          <div id="span-tabs" class="segmented" role="group" aria-label="Filter Attention Spans"></div>
-          <div id="span-entries" class="entries"></div>
+          <div class="page-heading compact"><span class="eyebrow">DEPTH, WHEN YOU WANT IT</span><h1 id="directory-title">Attention Spans.</h1><p id="directory-intro">Named places for thoughts, conversations and things worth returning to.</p></div>
+          <div id="span-directory">
+            <div class="directory-tools"><div><label for="span-search">Find an Attention Span</label><input id="span-search" type="search" placeholder="A name, topic or phrase…" maxlength="100"></div><button id="new-span" class="quiet">+ New Attention Span</button></div>
+            <div id="span-list" class="span-directory"></div>
+          </div>
+          <div id="span-feed" hidden><div class="feed-toolbar"><button id="back-spans" class="text-button">← All Attention Spans</button><button id="post-to-span" class="primary">+ Post here</button></div><p id="span-description" class="muted"></p><div id="span-entries" class="entries"></div></div>
+        </section>
+        <section id="view-thread" hidden>
+          <div class="feed-toolbar"><button id="back-feed" class="text-button">← Back to Attention Span</button><a id="thread-permalink" class="small">Permalink ↗</a></div>
+          <article id="thread-post" class="journal-post"></article>
+          <div class="section-heading"><h2 id="replies-heading">Replies</h2><button id="reply-to-root" class="text-button">Reply to the post</button></div>
+          <div id="thread-replies" class="thread-replies"></div>
+          <form id="reply-form" class="panel"><span class="eyebrow">CONTINUE THE THOUGHT</span><h2>Leave a reply.</h2><p id="reply-target" class="small"></p><label for="reply-text">Your exact words</label><textarea id="reply-text" rows="4" maxlength="4000" required></textarea><p id="reply-draft-state" class="small" aria-live="polite"></p><button id="save-reply" class="primary" type="submit">Save reply</button><p class="small">Replies stay in this thread. They don't become tasks or change NOW.</p></form>
         </section>
         <section id="view-engine" hidden>
           <div class="page-heading compact"><span class="eyebrow">UNDER THE SURFACE</span><h1>The Engine Room.</h1><p>What's working here, what stays here, and what this demo leaves out.</p></div>
@@ -51,6 +61,7 @@
     </div>
   </div>
   <dialog id="capture-dialog" aria-labelledby="capture-heading"><form id="capture-form"><div class="dialog-top"><span class="eyebrow">CAPTURE FIRST</span><button type="button" class="icon-button" data-close="capture-dialog" aria-label="Close capture">×</button></div><h2 id="capture-heading">Get it out of your head.</h2><p>Try a fictional thought. Your exact words stay in this browser.</p><label for="capture-text">Original thought</label><textarea id="capture-text" rows="7" maxlength="4000" placeholder="Maybe… I need to… What if…"></textarea><label for="capture-span">Attention Span</label><select id="capture-span"><option>Unsorted</option><option>Product demo</option><option>Learning</option></select><p id="draft-state" class="small" aria-live="polite"></p><div class="actions"><button id="save-capture" class="primary" type="submit">Save original</button><button id="fill-example" class="quiet" type="button">Try a fictional example</button></div><p class="small">Saving doesn't change your chosen next step.</p></form></dialog>
+  <dialog id="span-dialog" aria-labelledby="span-heading"><form id="span-form"><div class="dialog-top"><span class="eyebrow">A PLACE TO RETURN TO</span><button type="button" class="icon-button" data-close="span-dialog" aria-label="Close new Attention Span">×</button></div><h2 id="span-heading">Name the Attention Span.</h2><label for="span-name">Descriptive name</label><input id="span-name" minlength="2" maxlength="40" required placeholder="Workshop ideas"><p class="small">Start with a name. Posts and replies build the history over time.</p><button id="save-span" class="primary" type="submit">Create Attention Span</button><p id="span-error" class="small" role="status"></p></form></dialog>
   <dialog id="source-dialog" aria-labelledby="source-heading"><div class="dialog-top"><span class="eyebrow">EXACT WORDS, ALWAYS REACHABLE</span><button class="icon-button" data-close="source-dialog" aria-label="Close original">×</button></div><h2 id="source-heading">The thought, intact.</h2><div class="segmented" role="group" aria-label="Source display"><button id="show-organized" aria-pressed="false">Organized view</button><button id="show-raw" aria-pressed="true">Original text</button></div><div id="source-body"></div><p id="source-proof" class="small"></p></dialog>
 </body>
 </html>
