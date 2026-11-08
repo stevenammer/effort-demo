@@ -140,10 +140,11 @@ export function createContinuity({ db, ready, prepare, notify, read, recoveryRec
     const event = await eventFor(id, item.latestId, 'DROPPED', item.choice, note);
     await commit(saved, { events: [event], now: item.state === 'ACTIVE' ? null : saved.now }); notify(); return read();
   }
-  async function holdPlace({ summary, nextAction = '', route = 'home', context = { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected }, { requestId } = {}) {
+  async function holdPlace({ summary, nextAction = '', route = 'home', context = { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected }, { requestId, expectedEpoch } = {}) {
     if (!noteAllowed(summary, true) || !noteAllowed(nextAction) || !validRoute(route) || !validContext(context)) throw Error('Add a short summary and a valid return point.');
     if (requestId !== undefined && !validId(requestId)) throw Error('The return-point request ID is invalid.');
     const saved = await begin();
+    if (expectedEpoch !== undefined && expectedEpoch !== (saved.epoch ?? null)) throw Error('The workspace changed. Keep your return note before trying again.');
     const id = requestId === undefined ? crypto.randomUUID() : await stableId(JSON.stringify(['hold-place', saved.epoch ?? null, requestId]));
     const matches = place => place.summary === summary && place.nextAction === nextAction && place.route === route && same(place.context, context) && (expected === undefined || same(place.choice, expected));
     const prior = saved.places.find(place => place.id === id);

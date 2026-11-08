@@ -1,3 +1,4 @@
+import { createExploration, EXPLORATION_TABLES, validateExplorationState } from './exploration.js';
 import { stableId } from './primitives.js';
 import { validateDraft, DRAFT_LIMITS, DRAFT_RESET_MARKER, markDraftReset } from './drafts.js';
 import { createContinuity } from './continuity-store.js';
@@ -173,12 +174,12 @@ export function createStore(options = {}) {
     });
   }
   async function read({ includeDrafts = true } = {}) {
-    await recover(); await ensureSpans(); await continuity.repair(); if (includeDrafts) await recoverDrafts();
-    return db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES], 'readonly', async tx => {
+    await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); if (includeDrafts) await recoverDrafts();
+    return db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES, ...EXPLORATION_TABLES], 'readonly', async tx => {
       const captures = await request(tx.objectStore('captures').getAll());
       captures.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
       return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null,
-        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [] };
+        recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [] };
     });
   }
   async function health() {
@@ -237,7 +238,7 @@ export function createStore(options = {}) {
       for (const record of state.recovery) await request(tx.objectStore('quarantine').put(record));
       for (const span of state.spans) await request(tx.objectStore('spans').put(span));
       for (const draft of state.drafts) await request(tx.objectStore('drafts').put(draft));
-      for (const table of INTENT_TABLES) for (const row of state[table]) await request(tx.objectStore(table).put(row));
+      for (const table of [...INTENT_TABLES, ...EXPLORATION_TABLES]) for (const row of state[table]) await request(tx.objectStore(table).put(row));
       await setMeta(tx, 'intentInitialized', true); await setMeta(tx, 'draftLegacyClosed', true);
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false); await setMeta(tx, 'epoch', epoch);
       await setMeta(tx, 'initialized', true); await setMeta(tx, 'legacyChecked', true);
@@ -269,6 +270,14 @@ export function createStore(options = {}) {
       throw Error('Backup checksum mismatch. Nothing was changed.');
     }
     let incoming = await validateState(bundle.payload); const continuityPlan = await continuity.prepareRestore(incoming, { legacy: bundle.payload.version < 4 }); incoming = continuityPlan.incoming;
+    const currentExploration = await db.run(EXPLORATION_TABLES, 'readonly', async tx => Object.fromEntries(await Promise.all(EXPLORATION_TABLES.map(async table => [table, await request(tx.objectStore(table).getAll())]))));
+    const mergedExploration = {};
+    for (const table of EXPLORATION_TABLES) {
+      const merged = new Map(currentExploration[table].map(row => [row.id, row]));
+      for (const row of incoming[table]) { if (merged.has(row.id) && !same(merged.get(row.id), row)) throw Error('An exploration record with the same ID differs. Nothing was changed.'); merged.set(row.id, row); }
+      mergedExploration[table] = [...merged.values()];
+    }
+    await validateExplorationState({ ...incoming, captures: [...continuityPlan.saved.captures, ...incoming.captures.filter(c => !continuityPlan.saved.captures.some(old => old.id === c.id))], places: [...continuityPlan.saved.places, ...incoming.places.filter(p => !continuityPlan.saved.places.some(old => old.id === p.id))], ...mergedExploration });
     const currentDrafts = await db.run(['drafts'], 'readonly', tx => request(tx.objectStore('drafts').getAll())), draftAdds = [];
     for (const draft of incoming.drafts) {
       const existing = currentDrafts.find(row => row.key === draft.key);
@@ -283,12 +292,16 @@ export function createStore(options = {}) {
       } else draftAdds.push(draft);
     }
     if (currentDrafts.length + draftAdds.length > DRAFT_LIMITS.records || JSON.stringify([...currentDrafts, ...draftAdds]).length > DRAFT_LIMITS.total) throw Error('Restored drafts would exceed the local draft limit. Nothing was changed.');
-    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES], 'readwrite', async tx => {
+    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES, ...EXPLORATION_TABLES], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset during restore. Reopen the backup before trying again.');
       if (!same(await request(tx.objectStore('drafts').getAll()), currentDrafts)) throw Error('A draft changed during restore. Retry with your writing kept.');
       for (const draft of draftAdds) await request(tx.objectStore('drafts').add(draft));
       for (const table of INTENT_TABLES) if (!same(await request(tx.objectStore(table).getAll()), continuityPlan.saved[table])) throw Error('Work changed during restore. Reopen the backup before trying again.');
       if (!same(await meta(tx, 'now') ?? null, continuityPlan.saved.now)) throw Error('NOW changed during restore. Reopen the backup before trying again.');
+      for (const table of EXPLORATION_TABLES) {
+        if (!same(await request(tx.objectStore(table).getAll()), currentExploration[table])) throw Error('Exploration changed during restore. Retry with your writing kept.');
+        for (const row of incoming[table]) if (!await request(tx.objectStore(table).get(row.id))) await request(tx.objectStore(table).add(row));
+      }
       const captures = tx.objectStore('captures'); const existing = await request(captures.getAll()); const missing = [];
       for (const capture of incoming.captures) {
         const previous = existing.find(c => c.id === capture.id);
@@ -335,6 +348,7 @@ export function createStore(options = {}) {
   }
   async function close() { channel?.close(); listeners.clear(); await db.close(); }
   const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
-  return { ...continuity, read, capture, createSpan, reset, exportData, restore, seed, health, close,
+  const exploration = createExploration({ db, ready, notify, recoveryRecord });
+  return { ...continuity, explore: exploration.explore, distill: exploration.distill, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

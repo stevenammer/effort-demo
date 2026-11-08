@@ -18,3 +18,5 @@ The current continuity slice implements explicit commitment histories, self-repo
 The draft slice now covers every composer, separate and cloned tabs, emergency recovery, reset fencing, workspace-scoped retries and version 5 backups. Attachments, exploration and the remaining full map stay open.
 
 The offline slice now reopens the public workspace without a connection and applies complete, verified app updates only after a deliberate tap and draft checks. Cache eviction, long-term cache budgets and the remaining full map still require continued work.
+
+The safe-exploration slice adds persisted nested branches, the four-position divergence dial, self-authored typed distillation (including unresolved and weird ideas), exact-writing downloads, saved return context, draft recovery and version 6 backup coverage. Selection from the original remains explicit and is unavailable inside an unhinged branch. Directly promoting a newly distilled proposal with its own durable authority receipt, branch status transitions, thinking-move metadata and sessions remain future work.

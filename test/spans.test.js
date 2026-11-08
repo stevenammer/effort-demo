@@ -38,7 +38,7 @@ test('v2 database upgrades preserve old originals and synthesize the span direct
   const capture = { id: crypto.randomUUID(), text, hash: await sha256(text), createdAt: '2026-01-01T00:00:00.000Z', span: 'Learning', sample: false };
   const legacy = await new Promise((resolve, reject) => { const req = factory.open('effort-public-demo', 1); req.onupgradeneeded = () => { for (const table of ['captures', 'meta', 'quarantine', 'drafts']) req.result.createObjectStore(table, { keyPath: ['meta', 'drafts'].includes(table) ? 'key' : 'id' }); }; req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
   await new Promise((resolve, reject) => { const tx = legacy.transaction(['captures', 'meta'], 'readwrite'); tx.objectStore('captures').put(capture); tx.objectStore('meta').put({ key: 'initialized', value: true }); tx.oncomplete = resolve; tx.onabort = reject; }); legacy.close();
-  await store.seed(); const state = await store.read(); assert.deepEqual(state.captures, [capture]); assert.equal(state.version, 5); assert.ok(state.spans.some(s => s.name === 'Learning'));
+  await store.seed(); const state = await store.read(); assert.deepEqual(state.captures, [capture]); assert.equal(state.version, 6); assert.ok(state.spans.some(s => s.name === 'Learning'));
   await store.close();
 });
 

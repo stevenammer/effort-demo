@@ -9,9 +9,11 @@ export const DRAFT_RESET_MARKER = `${KEY}-draft-reset-marker`;
 export function markDraftReset(storage) { const marker = crypto.randomUUID(); storage.setItem(DRAFT_RESET_MARKER, marker); return marker; }
 const PREFIX = `${KEY}-shelf-`, TAB = `${KEY}-shelf-tab`;
 const uuid = () => crypto.randomUUID();
-const contextValid = c => typeof c === 'string' && (['capture', 'hold', 'span'].includes(c) || /^(reply|drop):/.test(c) && validId(c.slice(c.indexOf(':') + 1)));
+const contextValid = c => typeof c === 'string' && (['capture', 'hold', 'span'].includes(c) || /^(reply|drop|explore|distill):/.test(c) && validId(c.slice(c.indexOf(':') + 1)));
 const str = (v, max = 4000) => typeof v === 'string' && v.length <= max && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(v);
 function bodyValid(c, b) {
+  if (c.startsWith('explore:')) return exactKeys(b, ['text', 'sourceId', 'parentId', 'returnPointId', 'dial', 'returnData']) && str(b.text) && b.sourceId === c.slice(8) && validId(b.sourceId) && (b.parentId === null || validId(b.parentId)) && (b.returnPointId === null || validId(b.returnPointId)) && ['TIGHT', 'NORMAL', 'WILD', 'UNHINGED SANDBOX'].includes(b.dial) && exactKeys(b.returnData, ['route', 'context', 'expected', 'summary']) && validRoute(b.returnData.route) && validContext(b.returnData.context) && noteAllowed(b.returnData.summary, true) && (b.returnData.expected === null || choiceShape(b.returnData.expected));
+  if (c.startsWith('distill:')) return exactKeys(b, ['text', 'explorationId', 'type']) && str(b.text) && b.explorationId === c.slice(8) && ['RECEIPT', 'INSIGHT', 'HYPOTHESIS', 'EXPERIMENT', 'DECISION CANDIDATE', 'FUTURE ARCHITECTURE', 'OPEN TENSION', 'WEIRD BUT ALIVE', 'NOISE'].includes(b.type);
   if (c === 'capture') return exactKeys(b, ['text', 'span']) && str(b.text) && str(b.span, 100);
   if (c.startsWith('reply:')) return exactKeys(b, ['text', 'parentId']) && str(b.text) && (b.parentId === null || validId(b.parentId));
   if (c === 'span') return exactKeys(b, ['name']) && str(b.name, 100);
@@ -25,7 +27,7 @@ export async function validateDraft(r) {
   if (await sha256(JSON.stringify(payload)) !== hash) throw new IntegrityError('Draft checksum mismatch.');
   return r;
 }
-const emptyBody = (c, old) => c === 'capture' ? { text: '', span: old?.span ?? '' } : c.startsWith('reply:') ? { text: '', parentId: old?.parentId ?? null } : c === 'span' ? { name: '' } : c.startsWith('drop:') ? { note: '', commitmentId: c.slice(5), latestId: old?.latestId ?? null } : { summary: '', nextAction: '', route: old?.route ?? 'home', context: old?.context ?? { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected: old?.expected ?? null };
+const emptyBody = (c, old) => c.startsWith('explore:') || c.startsWith('distill:') ? { ...old, text: '' } : c === 'capture' ? { text: '', span: old?.span ?? '' } : c.startsWith('reply:') ? { text: '', parentId: old?.parentId ?? null } : c === 'span' ? { name: '' } : c.startsWith('drop:') ? { note: '', commitmentId: c.slice(5), latestId: old?.latestId ?? null } : { summary: '', nextAction: '', route: old?.route ?? 'home', context: old?.context ?? { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected: old?.expected ?? null };
 
 // save(context, body) mirrors synchronously and returns Promise<verified record>.
 // load(context) returns this writer's verified record or null. list()/recover() return

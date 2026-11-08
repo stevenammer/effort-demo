@@ -1,3 +1,4 @@
+import { EXPLORATION_DIALS, DISTILLATION_TYPES } from './exploration.js';
 import { setupOffline } from './offline.js';
 import { renderReading, readablePreview } from './reading.js';
 import { deriveCommitments } from './intent.js';
@@ -16,6 +17,7 @@ const displayTitle = (text, max = 90) => {
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let shelf, workspaceEpoch, fenced = false, resetting = false;
+let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
 const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
 function setValue(id, text) { $(id).value = text; shadows.set(id, text); }
@@ -79,7 +81,7 @@ function render() {
   $('now-title').textContent = now ? readablePreview(now.quote, 4000) : 'Nothing chosen. Room to think.';
   $('now-origin').textContent = now ? now.origin === 'sample' ? 'Sample choice' : 'Chosen here' : 'No next step';
   $('now-reason').textContent = now ? 'One chosen detail. Capturing or exploring something else leaves it here.' : 'Capture freely. A thought only becomes your next step when you choose it.';
-  $('now-done').hidden = $('now-original').hidden = $('hold-open').hidden = !now;
+  $('now-done').hidden = $('now-original').hidden = $('hold-open').hidden = $('now-explore').hidden = !now;
   renderReturnPoint();
   $('recent').replaceChildren(...state.captures.filter(c => !parentOf(c)).slice(-2).reverse().map(entryCard));
   if (!state.captures.length) $('recent').append(element('p', 'Nothing here yet. Capture a fictional thought to try the loop.', 'empty'));
@@ -139,7 +141,7 @@ function renderThread() {
   const requested = state.captures.find(c => c.id === threadId), root = requested && threadRoot(requested, state.captures);
   const main = $('thread-post'); main.replaceChildren();
   $('thread-permalink').hidden = $('reply-to-root').hidden = !root;
-  if (!root) { $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
+  if (!root) { $('thread-explorations').replaceChildren(); $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
   $('reply-form').hidden = false; $('thread-permalink').href = `#thread/${root.id}`;
   $('back-feed').onclick = () => openSpan(spanKey(root.span));
   main.append(element('span', `${root.span} · ${formatDate(root.createdAt)} · ${root.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'), element('h1', displayTitle(root.text, 110)));
@@ -152,7 +154,8 @@ function renderThread() {
   const choose = element('button', 'Choose a next step…', 'quiet'); choose.onclick = () => openSource(root.id, false);
   const reply = element('button', 'Reply', 'quiet'); reply.onclick = () => targetReply(root.id);
   const hold = element('button', 'Hold my place…', 'text-button'); hold.onclick = openHold;
-  actions.append(reply, choose, hold); main.append(actions);
+  const explore = element('button', 'Explore safely…', 'text-button'); explore.onclick = () => openExplore(root.id);
+  actions.append(reply, choose, hold, explore); main.append(actions);
   const children = new Map();
   for (const capture of state.captures) if (parentOf(capture)) { const list = children.get(capture.parentId) ?? []; list.push(capture); children.set(capture.parentId, list); }
   const rows = [], visited = new Set([root.id]);
@@ -173,7 +176,109 @@ function renderThread() {
   const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
   $('reply-target').textContent = validTarget ? `Replying to: ${displayTitle(target.text, 100)}` : 'Choose a reply target before saving. Your draft is still here.';
   $('reply-to-root').onclick = () => targetReply(root.id);
+  renderExplorations(root);
 }
+function renderExplorations(root) {
+  const host = $('thread-explorations'); host.replaceChildren();
+  const branches = (state.explorations ?? []).filter(b => threadRoot(state.captures.find(c => c.id === b.sourceId), state.captures)?.id === root.id);
+  if (!branches.length) return;
+  host.append(element('h2', 'Room to wander, with a way back.'), element('p', 'Branches and distillations are your own writing. Keeping them creates no obligation.', 'muted'));
+  const byId = new Map(branches.map(b => [b.id, b]));
+  for (const branch of branches.slice().sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
+    const card = element('article', undefined, 'panel exploration-card'); card.id = `branch-${branch.id}`;
+    card.append(element('span', `${branch.dial} · YOUR EXPLORATION`, 'eyebrow'), element('h3', displayTitle(branch.text, 100)), renderReading(branch.text, { headingBase: 3 }));
+    const parent = byId.get(branch.parentId), lineage = element('p', parent ? 'Branched from: ' : 'From the original thought. ', 'small');
+    if (parent) { const link = element('a', displayTitle(parent.text, 90)); link.href = `#branch-${parent.id}`; link.onclick = event => { event.preventDefault(); $(`branch-${parent.id}`)?.scrollIntoView({ block: 'center' }); }; lineage.append(link); }
+    card.append(lineage, element('p', `${formatDate(branch.at)} · Exact writing verified`, 'small'));
+    const raw = element('details', undefined, 'original-disclosure'); raw.append(element('summary', 'Read exact branch writing'), element('pre', branch.text, 'raw'));
+    const download = element('button', 'Download branch text', 'text-button'); download.onclick = () => downloadText(branch.text, `effort-branch-${branch.id}.txt`, 'text/plain'); raw.append(download); card.append(raw);
+    const actions = element('div', undefined, 'post-actions');
+    const fork = element('button', 'Branch from here…', 'quiet'); fork.onclick = () => openExplore(branch.sourceId, branch);
+    const distill = element('button', 'Distill…', 'quiet'); distill.onclick = () => openDistill(branch);
+    const returnPoint = state.places.find(p => p.id === branch.returnPointId);
+    const back = element('button', 'Return to where I was', 'text-button'); back.disabled = !returnPoint; back.onclick = () => resumeSavedPlace(returnPoint, back);
+    const original = element('button', 'See original ↗', 'text-button'); original.onclick = () => openSource(branch.sourceId, true);
+    actions.append(fork, distill, back, original); card.append(actions);
+    for (const item of (state.distillations ?? []).filter(d => d.explorationId === branch.id).sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
+      const kept = element('section', undefined, 'distillation-card'); kept.append(element('span', `${item.type} · YOUR INTERPRETATION`, 'eyebrow'), renderReading(item.text, { headingBase: 4 }));
+      const raw = element('details', undefined, 'original-disclosure'); raw.append(element('summary', 'Read exact distillation writing'), element('pre', item.text, 'raw'));
+      const download = element('button', 'Download distillation text', 'text-button'); download.onclick = () => downloadText(item.text, `effort-distillation-${item.id}.txt`, 'text/plain'); raw.append(download); kept.append(raw);
+      if (branch.dial === 'UNHINGED SANDBOX') kept.append(element('p', 'Kept in the sandbox. To consider action, branch with another dial first. Nothing has become a task.', 'small'));
+      else { const promote = element('button', 'Choose from original…', 'text-button'); promote.onclick = () => { openSource(branch.sourceId, false); notice('Review the exact original, then choose a next step explicitly. This distillation hasn’t committed anything.'); }; kept.append(promote); }
+      card.append(kept);
+    }
+    host.append(card);
+  }
+}
+const exploreBody = () => ({ ...explorationDraft, text: value('explore-text'), dial: $('explore-dial').value });
+const distillBody = () => ({ ...distillationDraft, text: value('distill-text'), type: $('distill-type').value });
+async function openExplore(sourceId, parent = null) {
+  if (explorationSaving || explorationLoading || resetting) return;
+  explorationLoading = true;
+  const source = state.captures.find(c => c.id === sourceId); if (!source) { explorationLoading = false; return; }
+  const returnData = { route: routeFromHash(), context: { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false }, expected: structuredClone(state.now), summary: displayTitle(source.text, 300) };
+  explorationDraft = { sourceId, parentId: parent?.id ?? null, returnPointId: parent?.returnPointId ?? null, returnData };
+  $('explore-text').disabled = $('explore-dial').disabled = true; $('save-exploration').disabled = true;
+  setValue('explore-text', ''); $('explore-dial').value = parent?.dial ?? 'NORMAL'; status('explore-error', ''); $('explore-dialog').showModal();
+  try {
+    const saved = await loadContext(`explore:${sourceId}`);
+    if (saved?.body.text) { const { text, dial, ...context } = saved.body; explorationDraft = context; setValue('explore-text', text); $('explore-dial').value = dial; status('explore-error', 'Unfinished branch restored with its original parent and return context.'); }
+  } catch (e) { status('explore-error', `${e.message} Copy writing before leaving.`); }
+  const ancestor = state.explorations?.find(b => b.id === explorationDraft.parentId);
+  $('explore-parent').textContent = ancestor ? `Branching from: ${displayTitle(ancestor.text, 150)}` : `From: ${displayTitle(source.text, 150)}`;
+  explorationLoading = false; $('explore-text').disabled = $('explore-dial').disabled = false; $('save-exploration').disabled = false; $('explore-text').focus();
+}
+async function openDistill(branch) {
+  if (distillationSaving || distillationLoading || resetting) return;
+  distillationLoading = true;
+  distillationDraft = { explorationId: branch.id };
+  $('distill-text').disabled = $('distill-type').disabled = true; $('save-distillation').disabled = true;
+  setValue('distill-text', ''); $('distill-type').value = 'INSIGHT'; status('distill-error', ''); $('distill-dialog').showModal();
+  try { const saved = await loadContext(`distill:${branch.id}`); if (saved?.body.text) { setValue('distill-text', saved.body.text); $('distill-type').value = saved.body.type; } }
+  catch (e) { status('distill-error', `${e.message} Copy writing before leaving.`); }
+  $('distill-source').textContent = `From your branch: ${displayTitle(branch.text, 160)}`;
+  distillationLoading = false; $('distill-text').disabled = $('distill-type').disabled = false; $('save-distillation').disabled = false; $('distill-text').focus();
+}
+for (const [kind, textId, selectId, body] of [['explore', 'explore-text', 'explore-dial', exploreBody], ['distill', 'distill-text', 'distill-type', distillBody]]) {
+  const persist = () => { const draft = kind === 'explore' ? explorationDraft : distillationDraft; if (!draft) return; edited(textId); saveDraft(`${kind}:${kind === 'explore' ? draft.sourceId : draft.explorationId}`, body(), `${kind}-error`, true); };
+  $(textId).oninput = persist; $(selectId).onchange = persist;
+}
+$('explore-form').onsubmit = async event => {
+  event.preventDefault(); if (!explorationDraft || explorationSaving || explorationLoading || resetting) return;
+  explorationSaving = true; const body = exploreBody(), context = `explore:${body.sourceId}`, generation = epoch, expectedEpoch = workspaceEpoch;
+  for (const id of ['explore-text', 'explore-dial', 'save-exploration']) $(id).disabled = true;
+  try {
+    await saveDraft(context, body, 'explore-error', true);
+    if (generation !== epoch) throw Error('The workspace changed. Reopen the exploration.');
+    let returnPointId = body.returnPointId;
+    if (!returnPointId) { const place = await store.holdPlace({ ...body.returnData, nextAction: '' }, { requestId: requestId(`${context}:return`, body.returnData), expectedEpoch }); returnPointId = place.id; }
+    if (generation !== epoch) throw Error('The workspace changed. Your branch was not added.');
+    const record = await store.explore({ sourceId: body.sourceId, parentId: body.parentId, returnPointId, text: body.text, dial: body.dial }, { requestId: requestId(context, body), expectedEpoch });
+    if (generation !== epoch) return;
+    notice('Branch kept. Your chosen NOW is unchanged.');
+    try { await clearDraft(context, body); releaseRequest(context); if (JSON.stringify(exploreBody()) === JSON.stringify(body)) { setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; } }
+    catch (e) { cleanupOffer(context, body, 'explore-error', 'Branch kept.', () => { releaseRequest(context); setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; }, () => !!explorationDraft && JSON.stringify(exploreBody()) === JSON.stringify(body)); }
+    await refreshed(); openThread(record.sourceId); $(`branch-${record.id}`)?.scrollIntoView({ block: 'center' });
+  } catch (e) { status('explore-error', `${e.message} Your writing is still here.`); }
+  finally { explorationSaving = false; for (const id of ['explore-text', 'explore-dial', 'save-exploration']) $(id).disabled = false; }
+};
+$('distill-form').onsubmit = async event => {
+  event.preventDefault(); if (!distillationDraft || distillationSaving || distillationLoading || resetting) return;
+  distillationSaving = true; const body = distillBody(), context = `distill:${body.explorationId}`, generation = epoch, expectedEpoch = workspaceEpoch;
+  for (const id of ['distill-text', 'distill-type', 'save-distillation']) $(id).disabled = true;
+  try {
+    await saveDraft(context, body, 'distill-error', true);
+    if (generation !== epoch) throw Error('The workspace changed. Reopen the distillation.');
+    await store.distill(body, { requestId: requestId(context, body), expectedEpoch });
+    if (generation !== epoch) return;
+    notice('Distillation kept. Nothing has become a task.');
+    try { await clearDraft(context, body); releaseRequest(context); if (JSON.stringify(distillBody()) === JSON.stringify(body)) { setValue('distill-text', ''); $('distill-dialog').close(); distillationDraft = null; } }
+    catch (e) { cleanupOffer(context, body, 'distill-error', 'Distillation kept.', () => { releaseRequest(context); setValue('distill-text', ''); $('distill-dialog').close(); distillationDraft = null; }, () => !!distillationDraft && JSON.stringify(distillBody()) === JSON.stringify(body)); }
+    await refreshed();
+  } catch (e) { status('distill-error', `${e.message} Your writing is still here.`); }
+  finally { distillationSaving = false; for (const id of ['distill-text', 'distill-type', 'save-distillation']) $(id).disabled = false; }
+};
+
 function targetReply(id) { if (replyLoading) return; persistReplyDraft(); replyTarget = id; persistReplyDraft(); renderThread(); $('reply-text').focus(); $('reply-form').scrollIntoView({ block: 'center', behavior: 'auto' }); }
 function organized(capture, choices = true) {
   const body = element('div');
@@ -314,7 +419,7 @@ function cleanupOffer(context, body, target, message, onClean = () => {}, isCurr
   status(target, `${message} Draft cleanup failed. Use Retry draft cleanup or copy the draft.`);
   let button = $(target).parentElement.querySelector('.retry-draft-cleanup');
   if (!button) { button = element('button', 'Retry draft cleanup', 'quiet retry-draft-cleanup'); button.type = 'button'; $(target).after(button); }
-  button.onclick = async () => { button.disabled = true; try { await clearDraft(context, body); button.remove(); status(target, `${message} Draft cleared.`); onClean(); } catch (e) { status(target, `${message} Draft cleanup still failed: ${e.message}`); } finally { button.disabled = false; } };
+  button.onclick = async () => { button.disabled = true; try { await clearDraft(context, body); button.remove(); if (isCurrent()) { status(target, `${message} Draft cleared.`); onClean(); } else status(target, `${message} Newer writing remains in this window.`); } catch (e) { status(target, `${message} Draft cleanup still failed: ${e.message}`); } finally { button.disabled = false; } };
 }
 function sourceButton(choice) {
   const button = element('button', 'See source ↗', 'text-button');
@@ -411,6 +516,7 @@ $('capture-form').onsubmit = async event => {
 $('show-raw').onclick = () => { rawView = true; renderSource(); };
 $('show-organized').onclick = () => { rawView = false; renderSource(); };
 $('now-original').onclick = () => state.now && openSource(state.now.captureId, true);
+$('now-explore').onclick = () => state.now && openExplore(state.now.captureId);
 $('now-done').onclick = async () => { try { state = await store.complete(state.now); render(); notice('Done. Your self-reported receipt is in Proof.'); } catch (error) { fail(error); } };
 function downloadText(raw, filename, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([raw], { type })); const link = element('a'); link.href = url; link.download = filename;
@@ -442,14 +548,14 @@ async function replaceDemo(samples) {
     let draftCleanupError;
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
-    ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined;
+    ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
-    for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name']) $(id).value = '';
-    for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error']) status(id, '');
+    for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name', 'explore-text', 'distill-text']) $(id).value = '';
+    for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
-    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog']) if ($(id).open) $(id).close();
+    for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog']) if ($(id).open) $(id).close();
     workspaceEpoch = (await store.health()).epoch; fenced = false;
     try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }
     await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but draft storage or cleanup failed. Check Engine Room before writing.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private EFFORT app is separate.', !!draftCleanupError);
@@ -509,10 +615,12 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting) throw Error('Wait for the current save or view to finish.');
+  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading) throw Error('Wait for the current save or view to finish.');
   document.body.inert = true;
   try {
     const pending = [['capture', captureBody()]];
+    if (explorationDraft) pending.push([`explore:${explorationDraft.sourceId}`, exploreBody()]);
+    if (distillationDraft) pending.push([`distill:${distillationDraft.explorationId}`, distillBody()]);
     if (threadId) pending.push([`reply:${threadId}`, replyBody()]);
     for (const [context, body] of pending) {
       if (fenced && !adopted.has(context)) throw Error('The workspace changed in another tab. Copy any visible draft before reloading.');
