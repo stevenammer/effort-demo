@@ -4,7 +4,7 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-Published `main` runtime is **81d0238902baca455b1b96f6eacd77b525218cac**. Connected files/cross-links and the earlier proposal flow are released and independently verified locally, in a fresh checkout and on the hosted site. The checkout is now on `feature/thinking-continuity-20261108`, with the next slice implemented locally. Earlier WIP/feature branches are historical; inspect actual Git state and this checkpoint before resuming.
+Published `main` runtime is **1c367aaeb7b02323c06c871a43c20c65a674939c**. Thinking moves and branch continuity join the released connected-file and proposal flows. The checkout is on `main`; the feature branches retain implementation history. Inspect actual Git state and this checkpoint before resuming.
 
 The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
@@ -44,9 +44,9 @@ IndexedDB is schema 6 and backup is version 8, accepting versions 1 through 7. F
 
 The parent ran the full suite: **127 tests pass**. Browser acceptance has passed at 1440/390/320, including actual binary/full-size uploads/downloads, cross-links, permalinks, retries, backups, missing sources, large recovery copies, file-store failure, asynchronous reset and offline reload/download. The actual previously published DB5 client was upgraded to DB6 while two separate drafts, including late stale-tab writing, remained recoverable. Offline/update regression also checks a pending file selection pauses the update safely. Syntax checking was added to CI after an early local UI syntax error was caught before publication. A fresh checkout passed `npm ci --offline`, all 127 tests, syntax checking and the publication guard over 70 tracked files plus public history. GitHub checks **42513321198** and Pages **42513320239** succeeded. The parent executed the complete file/cross-link suite against the hosted site at all three widths, including full 2 MiB uploads/downloads, safe previews, exact raw recovery downloads, restored retries, unreadable file storage, reset races and offline reload/download. No page errors or external requests were observed. The hosted asset manifest matches the tested source (manifest-file SHA-256 `8667ae617d208afc0739017a0c0999e40ba9a7806e104d5e911f07225f6d957d`).
 
-## Current local slice: thinking continuity
+## Current released slice: thinking continuity
 
-The working branch is **feature/thinking-continuity-20261108**, based on published documentation checkpoint `c018ae4`. Implementation commit **d7fc0e0** adds optional thinking moves, exact saved prompt revisions, editable/off definitions, custom moves, explicit example tagging, immutable branch status/history, session-root links and branch permalinks. Recovery fix **f9d2c1f** prevents an older restored history prefix from silently reactivating an uncertain definition or status. A person can explicitly append a replacement choice; raw damaged history remains. See `docs/THINKING.md`.
+The slice was developed on **feature/thinking-continuity-20261108**, based on published documentation checkpoint `c018ae4`, and fast-forwarded to main for release. Implementation commit **d7fc0e0** adds optional thinking moves, exact saved prompt revisions, editable/off definitions, custom moves, explicit example tagging, immutable branch status/history, session-root links and branch permalinks. Recovery fix **f9d2c1f** prevents an older restored history prefix from silently reactivating an uncertain definition or status. A person can explicitly append a replacement choice; raw damaged history remains. See `docs/THINKING.md`.
 
 Schema is **7**, backup **9**, accepting backups 1 through 8. No prompt or status choice changes NOW. The parent independently ran **148/148 tests**, including exact move snapshots, immutable restoration, fork refusal, failed restore readback/retry, damaged-history quarantine, optional-store failure, draft tombstones and a final-primary-snapshot integrity race. Syntax passes. A fresh clone of `f9d2c1f` passed `npm ci --offline`, all 148 tests, syntax and the publication guard over 75 tracked files plus commit history.
 
@@ -54,17 +54,17 @@ Local thinking-browser acceptance passes at 1440, 390 and 320px: optional select
 
 Local core, exploration, proposal, connected-file, draft, composer and offline/update regressions pass. Exploration acceptance now verifies separate Home sessions get fresh return points; proposal acceptance verifies the branch's chosen-step label comes from an actual derived commitment. Real published DB5 and DB6 clients upgrade to DB7 while two tab drafts and late stale-tab writing remain recoverable. The DB6 upgrade also preserves the complete pre-upgrade attached file record and exact bytes. Composer teardown now waits for in-flight routed requests before closing the browser.
 
-This slice is committed locally and **not published**. The hosted runtime remains `81d0238`. Hosted verification has not run for thinking continuity. Preserve this branch and its implementation; don't restart from old main. Next is the authorized publication workflow if requested, followed by the remaining full-map work. Local checks do not prove the whole product complete.
+Runtime `1c367aa` is pushed to main and deployed on GitHub Pages. GitHub checks **42542153311** and Pages **42542152396** succeeded. Hosted thinking acceptance passed at all three widths with no page errors or external requests. The hosted manifest exactly matches the tested source (manifest-file SHA-256 `fe435d85224ad802819bf8fe75ff75be60bbfebd75d0cfca4ec716ffd31dd6fa`). The remaining full-map work stays open; this release does not prove the whole product complete.
 
 ## Resume here
 
 1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.
-2. Use the locally verified branch/session status and thinking-move slice as the next publication checkpoint. Preserve exact source thought, parent/root/return links, neutral states, editable/optional moves, evidence from chosen work and the promotion boundary. Put this depth in Attention Spans and exploration, without cluttering Home.
+2. Branch/session status and thinking moves are released. Continue from the current implementation. Preserve exact source thought, parent/root/return links, neutral states, editable/optional moves, evidence from chosen work and the promotion boundary. Put this depth in Attention Spans and exploration, without cluttering Home.
 3. Continue People/unread depth and explicitly invoked bounded help. Full-scope completion remains unproven: scale/cache policy, broader relation depth and the technical case study/completion audit still require work and real evidence. Green narrow tests are not completion of the owner's entire goal.
 
 ## Remaining full-map work
 
-Publication/hosted verification for local branch/session status and thinking moves; People depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
+People depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
 
 ## Boundaries
 

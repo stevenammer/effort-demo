@@ -1,6 +1,6 @@
 # Thinking moves and branch continuity
 
-This slice is implemented on `feature/thinking-continuity-20261108`. Local acceptance is complete; publication and hosted acceptance remain separate gates. See CURRENT_STATE.md for verified evidence and remaining checks.
+This slice is released on `main`, with implementation history on `feature/thinking-continuity-20261108`. Local and hosted thinking acceptance pass. See CURRENT_STATE.md for verified evidence and remaining checks.
 
 A thinking move is an optional, editable prompt. It is not an assessment of a person. The nine generic suggestions come from EFFORT's existing move library. People can change them, turn them off or add their own. No helper or provider runs when choosing a move.
 
