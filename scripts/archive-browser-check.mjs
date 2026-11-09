@@ -84,6 +84,12 @@ try {
     await page.getByText('Browser demo cleared. Your private EFFORT app is separate.',{exact:true}).waitFor();
     assert.equal(await page.locator('#fort-entries pre').count(),0);assert.equal(await page.locator('#capture-preview pre').count(),0);
     await page.locator('[data-view="fort"]').click();await page.getByText('No saved originals yet.',{exact:true}).waitFor();
+    if(width===1440){
+      await page.evaluate(async()=>{const{openDatabase,request}=await import('./database.js');const db=openDatabase();const rows=await Promise.all([{id:'00000000-0000-4000-8000-000000000001',text:'An earlier instant with a later-looking clock.',createdAt:'2026-01-01T12:00:00+09:00'},{id:'00000000-0000-4000-8000-000000000002',text:'A later instant with an earlier-looking clock.',createdAt:'2026-01-01T04:00:00Z'}].map(async row=>({...row,hash:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(row.text)))).map(b=>b.toString(16).padStart(2,'0')).join(''),span:'Learning',sample:false})));await db.run(['captures'],'readwrite',async tx=>{for(const row of rows)await request(tx.objectStore('captures').add(row));});await db.close();});
+      await page.goto(base+'/public/#home');await page.reload();await page.locator('#capture-open:enabled').waitFor();
+      assert.match(await page.locator('#recent .entry-card h3').first().textContent(),/^A later instant/);
+      await page.locator('[data-view="fort"]').click();assert.equal(await page.locator('.archive-card').first().getAttribute('id'),'fort-00000000-0000-4000-8000-000000000002');
+    }
     await context.close();console.log(`FORT/live EF passed ${width}px.`);
   }
   assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);

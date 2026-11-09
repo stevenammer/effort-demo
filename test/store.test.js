@@ -15,6 +15,20 @@ async function v1Fixture() {
   return { version:1, kind:current.kind, captures:current.captures, now:current.now };
 }
 
+test('restored source timestamps with numeric offsets retain chronological order outside FORT too', async()=>{
+  const {store,raw}=setup(); await store.reset();
+  const rows=await Promise.all([
+    {id:'00000000-0000-4000-8000-000000000001',text:'Earlier instant, later-looking clock.',createdAt:'2026-01-01T12:00:00+09:00'},
+    {id:'00000000-0000-4000-8000-000000000002',text:'Later instant, earlier-looking clock.',createdAt:'2026-01-01T04:00:00Z'},
+    {id:'00000000-0000-4000-8000-000000000003',text:'Same later instant, stable ID tie.',createdAt:'2026-01-01T06:00:00+02:00'},
+  ].map(async row=>({...row,hash:await sha256(row.text),span:'Learning',sample:false})));
+  await raw.run(['captures'],'readwrite',async tx=>{for(const row of rows)await request(tx.objectStore('captures').add(row));});
+  const read=await store.read();assert.deepEqual(read.captures.map(c=>c.id),rows.map(c=>c.id));
+  assert.equal(read.captures[0].createdAt,rows[0].createdAt);
+  const next=setup().store;await next.restore(await store.exportData());
+  assert.deepEqual((await next.read()).captures,read.captures);await next.close();await raw.close();await store.close();
+});
+
 test('capture verifies exact originals, preserves NOW and requires an explicit choice', async()=>{
   const {store}=setup(); await store.seed(); const chosen=(await store.read()).now;
   const text='  Maybe build an exercise.\r\nI\'ll review the outline. 🧠  ';

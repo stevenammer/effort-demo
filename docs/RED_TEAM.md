@@ -29,6 +29,8 @@ The active goal includes parity with the actual app and its intention, followed 
 | Exploration looked available before the preceding save had finished, so a fast click was ignored. | Enabled controls must reflect real save/load readiness without replacing the reading DOM. | Exploration browser regression passes after readiness controls were tied to pending state. |
 | Case-variant local-route prefixes could lose a rejected destination in the readable view. | Unsupported prefixes stay literal and inactive. | Exact parser regression and hostile browser recheck pass at1440/390/320. |
 
+| Shared source ordering compared ISO strings lexically, so valid UTC offsets could reverse real chronology outside FORT. | Sort by the actual instant with stable source-ID ties, preserving the original timestamp string. | A failing storage regression reproduced the bug. The fix passes all19 storage tests, the full210-test suite and the real browser Home/FORT offset-ordering case; exact timestamps survive a backup round trip. Release follow-up gates pending. |
+
 ## Further campaigns, still required
 
 The FORT slice additionally executes a real browser1,000-original fixture with50 rendered cards, refused over-capacity capture with exact draft retention, invalidated-source removal and clearing hidden archive/draft projections on reset. Exact source offsets and whole-workspace entity limits still require the wider audit.
