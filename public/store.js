@@ -1,3 +1,4 @@
+import { createRevisions, validateRevisionState, REVISION_TABLE } from './revisions.js';
 import { createPeople, validatePeopleState, PEOPLE_TABLES } from './people.js';
 import { createOpened, validateOpenedState, sameOpenedSource, OPENED_TABLE } from './opened.js';
 import { createThinking, THINKING_TABLES, validateThinkingState } from './thinking.js';
@@ -193,31 +194,33 @@ export function createStore(options = {}) {
       for (const row of bad) await request(tx.objectStore('quarantine').put(row));
     });
   }
-  async function read({ includeDrafts = true, requireArtifacts = false, requireThinking = false, requireOpened = false, requirePeople = false, integrityRetry = false } = {}) {
+  async function read({ includeDrafts = true, requireArtifacts = false, requireThinking = false, requireOpened = false, requirePeople = false, requireRevisions = false, integrityRetry = false } = {}) {
     await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); await recoverProposalProvenance();
-    let fileError, thinkingError, openedError, peopleError;
+    let fileError, thinkingError, openedError, peopleError, revisionError;
+    try { await revisions.repair(); } catch (error) { revisionError = error; }
     try { await people.repair(); } catch (error) { peopleError = error; }
     try { await opened.repair(); } catch (error) { openedError = error; }
     try { await thinking.repair(); } catch (error) { thinkingError = error; }
     try { await artifacts.repair(); } catch (error) { fileError = error; }
     if (includeDrafts) await recoverDrafts();
     const optionalRows = async (tx, table, feature) => { try { return await request(tx.objectStore(table).getAll()); } catch (error) { const failure = Error(error.message); failure.optionalFeature = feature; throw failure; } };
-    const snapshot = (files, thoughts, opening, relationships) => db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES, ...EXPLORATION_TABLES, ...(files ? ['artifacts'] : []), ...(thoughts ? THINKING_TABLES : []), ...(opening ? [OPENED_TABLE] : []), ...(relationships ? PEOPLE_TABLES : [])], 'readonly', async tx => {
+    const snapshot = (files, thoughts, opening, relationships, corrected) => db.run(['captures', 'meta', 'quarantine', 'spans', ...(includeDrafts ? ['drafts'] : []), ...INTENT_TABLES, ...EXPLORATION_TABLES, ...(files ? ['artifacts'] : []), ...(thoughts ? THINKING_TABLES : []), ...(opening ? [OPENED_TABLE] : []), ...(relationships ? PEOPLE_TABLES : []), ...(corrected ? [REVISION_TABLE] : [])], 'readonly', async tx => {
       const captures = await request(tx.objectStore('captures').getAll()); captures.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
-      return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null, recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [], artifacts: files ? await optionalRows(tx, 'artifacts', 'files') : [], branchEvents: thoughts ? await optionalRows(tx, 'branchEvents', 'thinking') : [], moveEvents: thoughts ? await optionalRows(tx, 'moveEvents', 'thinking') : [], openedReceipts: opening ? await optionalRows(tx, OPENED_TABLE, 'opened') : [], personEvents: relationships ? await optionalRows(tx, 'personEvents', 'people') : [], contactReceipts: relationships ? await optionalRows(tx, 'contactReceipts', 'people') : [] };
+      return { ...blank(), captures, now: (await meta(tx, 'now')) ?? null, recovery: await request(tx.objectStore('quarantine').getAll()), spans: await request(tx.objectStore('spans').getAll()), intentEvents: await request(tx.objectStore('intentEvents').getAll()), places: await request(tx.objectStore('places').getAll()), resumptions: await request(tx.objectStore('resumptions').getAll()), explorations: await request(tx.objectStore('explorations').getAll()), distillations: await request(tx.objectStore('distillations').getAll()), drafts: includeDrafts ? await request(tx.objectStore('drafts').getAll()) : [], artifacts: files ? await optionalRows(tx, 'artifacts', 'files') : [], branchEvents: thoughts ? await optionalRows(tx, 'branchEvents', 'thinking') : [], moveEvents: thoughts ? await optionalRows(tx, 'moveEvents', 'thinking') : [], openedReceipts: opening ? await optionalRows(tx, OPENED_TABLE, 'opened') : [], personEvents: relationships ? await optionalRows(tx, 'personEvents', 'people') : [], contactReceipts: relationships ? await optionalRows(tx, 'contactReceipts', 'people') : [], sourceRevisions: corrected ? await optionalRows(tx, REVISION_TABLE, 'revisions') : [] };
     });
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       if (fileError && requireArtifacts) throw Error(`Connected files are unavailable, so a complete backup cannot be prepared: ${fileError.message}`);
       if (thinkingError && requireThinking) throw Error(`Thinking history is unavailable, so a complete backup cannot be prepared: ${thinkingError.message}`);
       if (openedError && requireOpened) throw Error(`Opening history is unavailable, so a complete backup cannot be prepared: ${openedError.message}`);
       if (peopleError && requirePeople) throw Error(`People history is unavailable, so a complete backup cannot be prepared: ${peopleError.message}`);
+      if (revisionError && requireRevisions) throw Error(`Source revisions are unavailable, so a complete backup cannot be prepared: ${revisionError.message}`);
       let complete;
-      try { complete = await snapshot(!fileError, !thinkingError, !openedError, !peopleError); } catch (error) { if (error.optionalFeature === 'files') { fileError = error; continue; } if (error.optionalFeature === 'thinking') { thinkingError = error; continue; } if (error.optionalFeature === 'opened') { openedError = error; continue; } if (error.optionalFeature === 'people') { peopleError = error; continue; }
-        if (!fileError || !thinkingError || !openedError || !peopleError) {
+      try { complete = await snapshot(!fileError, !thinkingError, !openedError, !peopleError, !revisionError); } catch (error) { if (error.optionalFeature === 'files') { fileError = error; continue; } if (error.optionalFeature === 'thinking') { thinkingError = error; continue; } if (error.optionalFeature === 'opened') { openedError = error; continue; } if (error.optionalFeature === 'people') { peopleError = error; continue; } if (error.optionalFeature === 'revisions') { revisionError = error; continue; }
+        if (!fileError || !thinkingError || !openedError || !peopleError || !revisionError) {
           // Establish that primary writing can be read before degrading an unclassified combined-transaction failure.
-          await snapshot(false, false, false, false);
+          await snapshot(false, false, false, false, false);
           const unavailable = Error(`Optional records couldn't join the workspace snapshot: ${error.message}`);
-          fileError ??= unavailable; thinkingError ??= unavailable; openedError ??= unavailable; peopleError ??= unavailable; continue;
+          fileError ??= unavailable; thinkingError ??= unavailable; openedError ??= unavailable; peopleError ??= unavailable; revisionError ??= unavailable; continue;
         }
         throw error; }
       try {
@@ -225,11 +228,13 @@ export function createStore(options = {}) {
         if (new Set(complete.captures.map(c => c.id)).size !== complete.captures.length || complete.spans.some(span => !validSpan(span)) || complete.captures.some(c => !complete.spans.some(span => span.id === spanKey(c.span)))) throw new IntegrityError('The source directory could not be verified.');
         validateThreadLinks(complete.captures, complete.recovery); await validateIntentState(complete); await validateExplorationState(complete);
         for (const capture of complete.captures) await validateProposalProvenance(capture, complete);
-      } catch (error) { if (!integrityRetry) return read({ includeDrafts, requireArtifacts, requireThinking, requireOpened, requirePeople, integrityRetry: true }); throw Error(`Source verification failed during reading: ${error.message} Your saved records haven't been removed.`); }
+      } catch (error) { if (!integrityRetry) return read({ includeDrafts, requireArtifacts, requireThinking, requireOpened, requirePeople, requireRevisions, integrityRetry: true }); throw Error(`Source verification failed during reading: ${error.message} Your saved records haven't been removed.`); }
+      if (!revisionError) { try { await validateRevisionState(complete); } catch (error) { revisionError = error; continue; } }
       if (!peopleError) { try { await validatePeopleState(complete); } catch (error) { peopleError = error; continue; } }
       if (!openedError) { try { await validateOpenedState(complete); } catch (error) { openedError = error; continue; } }
       if (!thinkingError) { try { await validateThinkingState(complete); } catch (error) { thinkingError = error; continue; } }
       if (!fileError) { try { await validateArtifactState(complete); } catch (error) { fileError = error; continue; } }
+      if (revisionError) complete.revisionWarning = `Source revisions are unavailable: ${revisionError.message} Originals and NOW remain usable. Projection history is unknown.`;
       if (peopleError) complete.peopleWarning = `People history is unavailable: ${peopleError.message} Your thoughts and NOW remain usable. People records have not been removed.`;
       if (openedError) complete.openedWarning = `Opening history is unavailable: ${openedError.message} Writing and NOW remain usable. Opening status is unknown.`;
       if (fileError) complete.fileWarning = `Connected files are unavailable: ${fileError.message} Your thoughts and NOW remain usable. Files haven't been removed.`;
@@ -294,7 +299,7 @@ export function createStore(options = {}) {
       for (const record of state.recovery) await request(tx.objectStore('quarantine').put(record));
       for (const span of state.spans) await request(tx.objectStore('spans').put(span));
       for (const draft of state.drafts) await request(tx.objectStore('drafts').put(draft));
-      for (const table of [...INTENT_TABLES, ...EXPLORATION_TABLES, ...THINKING_TABLES, OPENED_TABLE, ...PEOPLE_TABLES, 'artifacts']) for (const row of state[table]) await request(tx.objectStore(table).put(row));
+      for (const table of [...INTENT_TABLES, ...EXPLORATION_TABLES, ...THINKING_TABLES, OPENED_TABLE, ...PEOPLE_TABLES, REVISION_TABLE, 'artifacts']) for (const row of state[table]) await request(tx.objectStore(table).put(row));
       await setMeta(tx, 'intentInitialized', true); await setMeta(tx, 'draftLegacyClosed', true);
       await setMeta(tx, 'now', state.now); await setMeta(tx, 'heldNow', false); await setMeta(tx, 'epoch', epoch);
       await setMeta(tx, 'initialized', true); await setMeta(tx, 'legacyChecked', true);
@@ -305,7 +310,7 @@ export function createStore(options = {}) {
   }
   async function reset() { return replace(blank()); }
   async function exportData({ draftCopies = [] } = {}) {
-    const payload = await read({ requireArtifacts: true, requireThinking: true, requireOpened: true, requirePeople: true });
+    const payload = await read({ requireArtifacts: true, requireThinking: true, requireOpened: true, requirePeople: true, requireRevisions: true });
     if (!Array.isArray(draftCopies) || draftCopies.length > 1000) throw Error('Too many emergency draft copies for one backup.');
     for (const copy of draftCopies) {
       if (copy.raw === null || copy.raw === undefined) continue;
@@ -342,6 +347,10 @@ export function createStore(options = {}) {
     const mergedPeople = {};
     for (const table of PEOPLE_TABLES) { const rows = new Map(currentPeople[table].map(row => [row.id, row])); for (const row of incoming[table]) { if (rows.has(row.id) && !same(rows.get(row.id), row)) throw Error('People history conflicts. Nothing was changed.'); rows.set(row.id, row); } mergedPeople[table] = [...rows.values()]; }
     await validatePeopleState({ ...mergedPeople, captures: [...continuityPlan.saved.captures, ...incoming.captures.filter(c => !continuityPlan.saved.captures.some(old => old.id === c.id))], recovery: [...continuityPlan.saved.recovery, ...incoming.recovery] });
+    const currentRevisions = await db.run([REVISION_TABLE], 'readonly', tx => request(tx.objectStore(REVISION_TABLE).getAll()));
+    const mergedRevisions = new Map(currentRevisions.map(row => [row.id, row]));
+    for (const row of incoming.sourceRevisions) { if (mergedRevisions.has(row.id) && !same(mergedRevisions.get(row.id), row)) throw Error('Source revision history conflicts. Nothing was changed.'); mergedRevisions.set(row.id, row); }
+    await validateRevisionState({ sourceRevisions: [...mergedRevisions.values()], captures: [...continuityPlan.saved.captures, ...incoming.captures.filter(c => !continuityPlan.saved.captures.some(old => old.id === c.id))], recovery: [...continuityPlan.saved.recovery, ...incoming.recovery] });
     const currentOpened = await db.run([OPENED_TABLE], 'readonly', tx => request(tx.objectStore(OPENED_TABLE).getAll()));
     incoming = { ...incoming, openedReceipts: incoming.openedReceipts.map(row => { const prior = currentOpened.find(old => old.id === row.id); return prior && sameOpenedSource(prior, row) ? prior : row; }) };
     const mergedOpened = new Map(currentOpened.map(row => [row.id, row]));
@@ -369,7 +378,7 @@ export function createStore(options = {}) {
       } else draftAdds.push(draft);
     }
     if (currentDrafts.length + draftAdds.length > DRAFT_LIMITS.records || JSON.stringify([...currentDrafts, ...draftAdds]).length > DRAFT_LIMITS.total) throw Error('Restored drafts would exceed the local draft limit. Nothing was changed.');
-    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES, ...EXPLORATION_TABLES, ...THINKING_TABLES, OPENED_TABLE, ...PEOPLE_TABLES, 'artifacts'], 'readwrite', async tx => {
+    const added = await db.run(['captures', 'meta', 'quarantine', 'spans', 'drafts', ...INTENT_TABLES, ...EXPLORATION_TABLES, ...THINKING_TABLES, OPENED_TABLE, ...PEOPLE_TABLES, REVISION_TABLE, 'artifacts'], 'readwrite', async tx => {
       if (await meta(tx, 'epoch') !== epoch) throw Error('The workspace was reset during restore. Reopen the backup before trying again.');
       if (!same(await request(tx.objectStore('drafts').getAll()), currentDrafts)) throw Error('A draft changed during restore. Retry with your writing kept.');
       for (const draft of draftAdds) await request(tx.objectStore('drafts').add(draft));
@@ -380,6 +389,8 @@ export function createStore(options = {}) {
         for (const row of incoming[table]) if (!await request(tx.objectStore(table).get(row.id))) await request(tx.objectStore(table).add(row));
       }
       for (const table of THINKING_TABLES) { if (!same(await request(tx.objectStore(table).getAll()), currentThinking[table])) throw Error('Thinking changed during restore. Retry with your writing kept.'); for (const row of incoming[table]) if (!await request(tx.objectStore(table).get(row.id))) await request(tx.objectStore(table).add(row)); }
+      if (!same(await request(tx.objectStore(REVISION_TABLE).getAll()), currentRevisions)) throw Error('Source revisions changed during restore. Keep the backup and retry.');
+      for (const row of incoming.sourceRevisions) if (!await request(tx.objectStore(REVISION_TABLE).get(row.id))) await request(tx.objectStore(REVISION_TABLE).add(row));
       for (const table of PEOPLE_TABLES) { if (!same(await request(tx.objectStore(table).getAll()), currentPeople[table])) throw Error('People history changed during restore. Keep your backup and retry.'); for (const row of incoming[table]) if (!await request(tx.objectStore(table).get(row.id))) await request(tx.objectStore(table).add(row)); }
       if (!same(await request(tx.objectStore(OPENED_TABLE).getAll()), currentOpened)) throw Error('Opening history changed during restore. Retry with your backup kept.');
       for (const row of incoming.openedReceipts) if (!await request(tx.objectStore(OPENED_TABLE).get(row.id))) await request(tx.objectStore(OPENED_TABLE).add(row));
@@ -416,6 +427,7 @@ export function createStore(options = {}) {
     try { for (const table of THINKING_TABLES) { const rows = await db.run([table], 'readonly', tx => Promise.all(incoming[table].map(row => request(tx.objectStore(table).get(row.id))))); if (rows.some((row, index) => !same(row, incoming[table][index]))) throw Error('A restored thinking record differs from its source.'); } } catch (error) { notify(); throw Error(`Thinking restore could not be verified: ${error.message} Keep the backup and retry.`); }
     try { const rows = await db.run([OPENED_TABLE], 'readonly', tx => Promise.all(incoming.openedReceipts.map(row => request(tx.objectStore(OPENED_TABLE).get(row.id))))); if (rows.some((row, index) => !same(row, incoming.openedReceipts[index]))) throw Error('A restored opening receipt differs from its source.'); } catch (error) { notify(); throw Error(`Opening restore could not be verified: ${error.message} Keep the backup and retry.`); }
     try { for (const table of PEOPLE_TABLES) { const rows = await db.run([table], 'readonly', tx => Promise.all(incoming[table].map(row => request(tx.objectStore(table).get(row.id))))); if (rows.some((row, index) => !same(row, incoming[table][index]))) throw Error('A restored People record differs from its source.'); } } catch (error) { notify(); throw Error(`People restore could not be verified: ${error.message} Keep your backup and retry.`); }
+    try { const rows = await db.run([REVISION_TABLE], 'readonly', tx => Promise.all(incoming.sourceRevisions.map(row => request(tx.objectStore(REVISION_TABLE).get(row.id))))); if (rows.some((row,index) => !same(row,incoming.sourceRevisions[index]))) throw Error('A restored source revision differs from its readback.'); } catch (error) { notify(); throw Error(`Source revision restore could not be verified: ${error.message} Keep the backup and retry.`); }
     notify(); return added;
   }
   async function seed(force = false) {
@@ -440,9 +452,10 @@ export function createStore(options = {}) {
   const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
   const exploration = createExploration({ db, ready, notify, recoveryRecord, ensureCapacity });
   const artifacts = createArtifacts({ db, ready, notify, recoveryRecord });
+  const revisions = createRevisions({ db, ready, notify, recoveryRecord });
   const people = createPeople({ db, ready, notify, recoveryRecord });
   const opened = createOpened({ db, ready, notify, recoveryRecord });
   const thinking = createThinking({ db, ready, notify, recoveryRecord });
-  return { ...continuity, savePerson: people.savePerson, logContact: people.logContact, markOpened: opened.markOpened, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
+  return { ...continuity, reviseSource: revisions.revise, savePerson: people.savePerson, logContact: people.logContact, markOpened: opened.markOpened, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

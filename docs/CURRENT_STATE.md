@@ -86,6 +86,12 @@ GitHub checks **42564363791** and Pages **42564362908** succeeded. Hosted FORT, 
 
 Separate append-only corrections/transcripts and the remaining full native map are still pending. This release doesn't establish a complete port.
 
+## Active continuation: separate source revisions
+
+Current branch is **feature/source-revisions-20261109**, based on published2c3c300. Corrections and supplied transcripts have separate sealed histories, FORT native precedence, historical search, source disclosures, drafts, explicit stale-base/recovery controls and an Engine Room directory. Schema10 / backup12 imports1..11. Originals and existing NOW remain separate. See REVISIONS.md.
+
+Initial full221-test and subsequent222-test suites pass;11 focused revision storage tests now pass, including a reproduced primary-repair race that could quarantine intact correction bytes. Basic and expanded three-width browser journeys pass through editing, retries, reading-DOM preservation, corrupted-prefix replacement and inherited acknowledgement. An isolated original-source/optional-store fault journey passes. Final combined browser run, full224 tests and release gates remain in progress. Nothing from this continuation is published yet. Corrected-source proposal preparation remains required after this component, followed by the full native map and adversarial campaign.
+
 ## Resume here
 
 1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.

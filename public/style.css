@@ -911,3 +911,7 @@ input[type=file] { max-width:100%; min-width:0; }
 #capture-preview .source-group { margin:.5rem 0; }
 .archive-card .fragment { display:block; }
 .archive-card .source-group h3 { font-size:.9rem; }
+
+.source-revision-panel { margin:1rem 0; }
+.source-revision-panel pre,#revision-current { max-height:20rem; overflow:auto; }
+.revision-disclosure { margin:1rem 0; }

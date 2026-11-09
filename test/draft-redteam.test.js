@@ -32,6 +32,7 @@ test('recovery never overwrites substantive people, move, exploration, branch or
     [`branch:${branch}`, branchBody(branch), b => ({ ...b, note: 'Another branch note.' })],
     [`explore:${source}`, exploreBody(source), b => ({ ...b, text: 'Another branch.' })],
     [`distill:${dist}`, distillBody(dist), b => ({ ...b, text: 'Another insight.' })],
+    ...['edit','transcript'].map(kind=>[`${kind==='edit'?'correction':'transcript'}:${source}`,{captureId:source,captureHash:'0'.repeat(64),kind,text:'Keep this exact draft.',expectedLatestId:null,expectedEffectiveId:null,acknowledgedRecovery:[],requestId:id()},b=>({...b,text:'A different recovered revision.'})]),
   ];
   for (const [context, body, change] of cases) {
     const current = await x.shelf.save(context, body), other = await alternate(current, change(body));

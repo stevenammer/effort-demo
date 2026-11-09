@@ -1,8 +1,9 @@
 // A display-only snapshot. Original strings and their identities never change.
 export const ARCHIVE_PAGE_SIZE = 50;
-export function archiveSnapshot(captures, query = '') {
+export function archiveSnapshot(captures, query = '', revisions = []) {
   const needle = String(query).trim().toLowerCase();
-  return captures.filter(c => !needle || c.text.toLowerCase().includes(needle)).slice()
+  const matches = new Set(revisions.filter(row => row.text.toLowerCase().includes(needle)).map(row => row.captureId));
+  return captures.filter(c => !needle || c.text.toLowerCase().includes(needle) || matches.has(c.id)).slice()
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id));
 }
 export function archiveWindow(rows, { aroundId = null, offset = 0, limit = ARCHIVE_PAGE_SIZE } = {}) {

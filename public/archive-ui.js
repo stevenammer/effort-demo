@@ -1,16 +1,17 @@
+import { sourceRevisionState } from './revisions.js';
 import { archiveSnapshot, archiveWindow } from './archive.js';
 
-export function createArchiveUI({ getState, getEpoch, element, organized, openSource, openThread, downloadText, getEF, setEF }) {
+export function createArchiveUI({ getState, getEpoch, element, organized, openSource, openThread, downloadText, getEF, setEF, getRevisionUI }) {
   const $ = id => document.getElementById(id);
-  let rows = [], next = 0, start = 0, query = '', selection = null, loaded = false, epoch, signature = '';
-  const fingerprint = captures => JSON.stringify(captures.map(c => [c.id, c.hash, c.createdAt]));
+  let rows = [], next = 0, start = 0, query = '', selection = null, loaded = false, epoch, signature = '', projectionSnapshot;
+  const fingerprint = state => JSON.stringify([state.captures.map(({text,...metadata})=>metadata),(state.sourceRevisions??[]).map(row=>[row.id,row.hash]),(state.recovery??[]).filter(row=>row.source==='sourceRevisions').map(row=>row.id),state.revisionWarning]);
   function card(capture) {
     const node = element('article', undefined, 'journal-post archive-card'); node.id = `fort-${capture.id}`; node.tabIndex = -1;
     const fresh = getState().captures.find(c => c.id === capture.id && c.hash === capture.hash);
     if (!fresh) { node.append(element('p', 'This source now needs recovery. Check Engine Room or a backup.')); return node; }
     node.append(element('p', `${capture.span} · ${capture.parentId ? 'Reply' : 'Post'} · ${capture.sample ? 'FICTIONAL EXAMPLE · ' : ''}${new Date(capture.createdAt).toLocaleString()}`, 'eyebrow'));
     if (getEF()) {
-      try { node.append(organized(capture, false)); }
+      try { const old=sourceRevisionState(projectionSnapshot,capture.id).effective,current=sourceRevisionState(getState(),capture.id); const invalid=current.uncertain||old&&!getState().sourceRevisions?.some(row=>row.id===old.id&&row.hash===old.hash); node.append(getRevisionUI().projection(capture,invalid?{...projectionSnapshot,revisionWarning:'Refresh or recovery required.'}:projectionSnapshot)); }
       catch { node.append(element('p', 'Organization is unavailable. The exact original is below.', 'small'), element('pre', capture.text, 'raw')); }
       const raw = element('details', undefined, 'original-disclosure'); raw.append(element('summary', 'Read the exact original'), element('pre', capture.text, 'raw')); node.append(raw);
     } else node.append(element('pre', capture.text, 'raw'));
@@ -19,7 +20,7 @@ export function createArchiveUI({ getState, getEpoch, element, organized, openSo
     for (const [label, action] of [['Open original', () => openSource(capture.id, true)], ['THREAD', () => openThread(capture.id)], ['Download original', () => downloadText(capture.text, `effort-original-${capture.id}.txt`, 'text/plain')]]) {
       const button = element('button', label, 'text-button'); button.type = 'button'; button.onclick = action; actions.append(button);
     }
-    const link = element('a', 'Permalink', 'small'); link.href = `#fort/${capture.id}`; link.dataset.localRoute = `fort/${capture.id}`; actions.append(link); node.append(actions);
+    const link = element('a', 'Permalink', 'small'); link.href = `#fort/${capture.id}`; link.dataset.localRoute = `fort/${capture.id}`; actions.append(link,getRevisionUI().action(capture.id,'edit'),getRevisionUI().action(capture.id,'transcript')); node.append(actions,getRevisionUI().disclosure(capture.id));
     if (capture.id === selection) node.classList.add('selected-branch');
     return node;
   }
@@ -30,7 +31,7 @@ export function createArchiveUI({ getState, getEpoch, element, organized, openSo
     $('fort-recovery').textContent = getState().recovery?.length ? 'Some records need recovery. Engine Room preserves their raw copies; they are not presented here as verified originals.' : '';
   }
   function snapshot(id = selection) {
-    const state = getState(); rows = archiveSnapshot(state.captures, query); signature = fingerprint(state.captures); epoch = getEpoch(); loaded = true; selection = id;
+    const state = getState(); projectionSnapshot = state; rows = archiveSnapshot(state.captures, query, state.sourceRevisions??[]); signature = fingerprint(state); epoch = getEpoch(); loaded = true; selection = id;
     const page = archiveWindow(rows, { aroundId: id }); start = page.offset; next = page.next;
     $('fort-entries').replaceChildren(...page.rows.map(card));
     if (!rows.length) $('fort-entries').append(element('p', query ? 'No saved originals match this search.' : 'No saved originals yet.', 'empty'));
@@ -43,6 +44,7 @@ export function createArchiveUI({ getState, getEpoch, element, organized, openSo
   $('fort-more').onclick = () => { const page = archiveWindow(rows, { offset: next }); $('fort-entries').append(...page.rows.map(card)); next = page.next; counts(); };
   $('fort-ef').onclick = () => setEF(!getEF());
   return {
+    refresh(id) { snapshot(id); },
     modeChanged() { if (!loaded) return; $('fort-entries').replaceChildren(...rows.slice(start, next).map(card)); if (!rows.length) $('fort-entries').append(element('p', query ? 'No saved originals match this search.' : 'No saved originals yet.', 'empty')); counts(); },
     enter(id = null) {
       if (!loaded || epoch !== getEpoch() || id !== selection) { if (id) { query = ''; $('fort-search').value = ''; } snapshot(id); }
@@ -52,10 +54,12 @@ export function createArchiveUI({ getState, getEpoch, element, organized, openSo
     update() {
       if (!loaded) return;
       if (epoch !== getEpoch()) { snapshot(null); return; }
-      const state = getState(); $('fort-refresh').hidden = signature === fingerprint(state.captures);
+      const state = getState(); $('fort-refresh').hidden = signature === fingerprint(state) && !document.querySelector('#fort-entries [data-needs-revision-refresh]');
       // New arrivals never reorder a page being read. Invalidated originals are removed immediately.
       const valid = new Map(state.captures.map(c => [c.id, c.hash]));
       for (const row of rows.slice(start, next)) if (valid.get(row.id) !== row.hash) { const old = $(`fort-${row.id}`); if (old && !old.dataset.recovery) { const replacement = card(row); replacement.dataset.recovery = 'true'; old.replaceWith(replacement); } }
+      for (const row of rows.slice(start,next)) { const old=sourceRevisionState(projectionSnapshot,row.id).effective, current=sourceRevisionState(state,row.id); if (old && !state.sourceRevisions?.some(r=>r.id===old.id&&r.hash===old.hash) || current.uncertain) { const node=$(`fort-${row.id}`)?.querySelector('.revision-projection'); if(node) {node.replaceChildren(element('p','EF projection needs recovery or refresh. The exact original is preserved separately.','small'));node.dataset.revisionId='';node.dataset.needsRevisionRefresh='true';} } }
+      if(document.querySelector('#fort-entries [data-needs-revision-refresh]'))$('fort-refresh').hidden=false;
       counts();
     },
   };

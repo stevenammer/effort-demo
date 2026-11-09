@@ -1,3 +1,4 @@
+import { createRevisionsUI } from './revisions-ui.js';
 import { createArchiveUI } from './archive-ui.js';
 import { createPeopleUI } from './people-ui.js';
 import { deriveOpened } from './opened.js';
@@ -20,7 +21,7 @@ const displayTitle = (text, max = 90) => {
   return titleOf(readablePreview(text, Math.max(max * 3, 360)), max) || 'Untitled thought';
 };
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
-let peopleUI, archiveUI, personSelection = null;
+let peopleUI, archiveUI, revisionsUI, personSelection = null;
 let efOn = true;
 try { efOn = localStorage.getItem('effort-display-ef') !== 'off'; } catch {}
 function setEF(on) { efOn = !!on; try { localStorage.setItem('effort-display-ef', efOn ? 'on' : 'off'); } catch {} renderCapturePreview(); archiveUI?.modeChanged(); }
@@ -125,7 +126,7 @@ function render() {
   $('capture-span').replaceChildren(...(state.spans ?? []).map(span => { const option = element('option', span.name); option.value = span.name; return option; }));
   if ([...$('capture-span').options].some(o => o.value === selected)) $('capture-span').value = selected;
   else $('capture-span').value = 'Unsorted';
-  renderSpans(); renderThread(); archiveUI?.update();
+  renderSpans(); renderThread(); archiveUI?.update(); revisionsUI?.update();
 }
 const descriptions = {
   raw: 'A landing place for thoughts that don’t need a destination yet.',
@@ -162,7 +163,7 @@ function refreshOpeningContext() {
   for (const capture of captures.slice(1)) { const card = $(`reply-${capture.id}`); if (!card) continue; const previous = card.querySelector('.unopened-badge'), text = openingBadge(capture, reading); if (!text) previous?.remove(); else if (previous) previous.textContent = text; else card.append(element('p', text, 'small unopened-badge')); }
   renderOpeningContext(root, captures);
 }
-const writingState = ({ openedReceipts, openedWarning, ...rest }) => JSON.stringify(rest);
+const writingState = ({ openedReceipts, openedWarning, sourceRevisions, revisionWarning, recovery = [], ...rest }) => JSON.stringify({...rest,recovery:recovery.filter(row=>row.source!=='sourceRevisions')});
 function renderOpeningContext(root, captures) {
   const reading = openingState(), missing = captures.filter(c => !reading.opened.has(c.id)), panel = $('thread-opening'); panel.replaceChildren();
   panel.append(element('p', state.openedWarning || openingErrors.get(root.id) || openingSummary(captures, reading), 'small opening-status'));
@@ -224,7 +225,7 @@ function renderThread() {
   if (parentOf(root)) main.append(element('p', 'The parent original needs recovery. This reply and its own replies are preserved here.', 'notice'));
   const display = element('details', undefined, 'original-disclosure'); display.append(element('summary', 'Read the exact original'), element('pre', root.text, 'raw'), element('p', `Original verified · SHA-256 ${root.hash}`, 'small'));
   const download = element('button', 'Download original text', 'text-button'); download.onclick = () => downloadText(root.text, `effort-original-${root.id}.txt`, 'text/plain'); display.append(download);
-  main.append(renderReading(root.text, { titleAlreadyShown: displayTitle(root.text, 110) }), display);
+  main.append(renderReading(root.text, { titleAlreadyShown: displayTitle(root.text, 110) }), display, revisionsUI.disclosure(root.id));
   const rootProvenance = proposalProvenance(root); if (rootProvenance) main.append(rootProvenance);
   const rootFiles = attachedFiles(root); if (rootFiles) main.append(rootFiles);
   const grouping = element('details', undefined, 'organized-disclosure'); grouping.append(element('summary', 'See organized details'), organized(root, false)); main.append(grouping);
@@ -596,11 +597,11 @@ function organized(capture, choices = true) {
   return body;
 }
 function renderSource() {
-  const capture = state.captures.find(c => c.id === sourceId); if (!capture) { $('source-body').replaceChildren(element('p', 'This original is no longer in the active workspace. Check Engine Room recovery or your downloaded backup.')); $('source-proof').textContent = ''; return; }
+  const capture = state.captures.find(c => c.id === sourceId); if (!capture) { $('source-body').replaceChildren(element('p', 'This original is no longer in the active workspace. Check Engine Room recovery or your downloaded backup.')); $('source-body').append(revisionsUI.panel(sourceId)); $('source-proof').textContent = ''; return; }
   $('show-raw').setAttribute('aria-pressed', String(rawView)); $('show-organized').setAttribute('aria-pressed', String(!rawView));
   const provenance = proposalProvenance(capture);
   const files = attachedFiles(capture);
-  $('source-body').replaceChildren(...(provenance ? [provenance] : []), rawView ? element('pre', capture.text, 'raw') : organized(capture), ...(files ? [files] : []));
+  $('source-body').replaceChildren(...(provenance ? [provenance] : []), rawView ? element('pre', capture.text, 'raw') : organized(capture), ...(files ? [files] : []), revisionsUI.disclosure(capture.id));
   $('source-proof').textContent = `Original verified · SHA-256 ${capture.hash.slice(0, 16)}… · ${capture.text.length} UTF-16 code units`;
 }
 function openSource(id, raw) { sourceId = id; rawView = raw; renderSource(); $('source-dialog').showModal(); }
@@ -629,6 +630,19 @@ $('reply-form').onsubmit = async event => {
   } catch (error) { $('reply-draft-state').textContent = `${error.message} Your draft is still here.`; }
   finally { $('save-reply').disabled = false; }
 };
+function renderRecovery(health) {
+    $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
+    const damagedOriginals = state.recovery.filter(record => record.source !== 'draft').length, draftCopies = state.recovery.length - damagedOriginals;
+    $('recovery-status').textContent = health.migrationWarning || `${damagedOriginals} damaged record${damagedOriginals === 1 ? '' : 's'} preserved separately.${draftCopies ? ` ${draftCopies} draft recovery cop${draftCopies === 1 ? 'y' : 'ies'} also preserved.` : ''} Verified originals remain available and you can keep capturing.`;
+    const host=$('recovery-items'),existing=new Map([...host.children].map(node=>[node.dataset.recoveryId,node]));
+    const nodes=state.recovery.map(record=>{
+      const previous=existing.get(record.id);if(previous){previous.querySelector('summary').textContent=`${record.source}: ${record.reason}`;return previous;}
+      const item = element('details');item.dataset.recoveryId=record.id; item.append(element('summary', `${record.source}: ${record.reason}`), element('pre', record.raw.slice(0, 8000), 'raw'));
+      if (record.raw.length > 8000) item.append(element('p', 'Preview truncated. Download the raw recovery record for its complete preserved bytes.', 'small'));
+      const download = element('button', 'Download raw recovery record', 'text-button'); download.onclick = () => downloadText(record.raw, `effort-recovery-${record.id}.json`, 'application/json'); item.append(download); return item;
+    });
+    for(const child of [...host.children])if(!nodes.includes(child))child.remove();for(let i=0;i<nodes.length;i++)if(host.children[i]!==nodes[i])host.insertBefore(nodes[i],host.children[i]??null);
+}
 function refreshed() {
   refreshing = refreshing.catch(() => {}).then(async () => {
     const previous = state; state = await store.read({ includeDrafts: false }); const openingOnly = previous && writingState(previous) === writingState(state); const health = await store.health();
@@ -639,16 +653,9 @@ function refreshed() {
       if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false);
     }
     if (branchSelection) { const branch = state.explorations?.find(b => b.id === branchSelection), source = branch && state.captures.find(c => c.id === branch.sourceId); if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false); }
-    if (openingOnly) { refreshOpeningSummaries(); refreshOpeningContext(); return; }
+    if (openingOnly) { if(JSON.stringify(previous.recovery)!==JSON.stringify(state.recovery))renderRecovery(health); refreshOpeningSummaries(); refreshOpeningContext(); archiveUI?.update(); revisionsUI?.update(); return; }
     render();
-    $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
-    const damagedOriginals = state.recovery.filter(record => record.source !== 'draft').length, draftCopies = state.recovery.length - damagedOriginals;
-    $('recovery-status').textContent = health.migrationWarning || `${damagedOriginals} damaged record${damagedOriginals === 1 ? '' : 's'} preserved separately.${draftCopies ? ` ${draftCopies} draft recovery cop${draftCopies === 1 ? 'y' : 'ies'} also preserved.` : ''} Verified originals remain available and you can keep capturing.`;
-    $('recovery-items').replaceChildren(...state.recovery.map(record => {
-      const item = element('details'); item.append(element('summary', `${record.source}: ${record.reason}`), element('pre', record.raw.slice(0, 8000), 'raw'));
-      if (record.raw.length > 8000) item.append(element('p', 'Preview truncated. Download the raw recovery record for its complete preserved bytes.', 'small'));
-      const download = element('button', 'Download raw recovery record', 'text-button'); download.onclick = () => downloadText(record.raw, `effort-recovery-${record.id}.json`, 'application/json'); item.append(download); return item;
-    }));
+    renderRecovery(health);
     if (health.heldNow) {
       $('now-title').textContent = 'Your chosen step needs recovery.';
       $('now-reason').textContent = 'Its saved reference could not be verified. Nothing else has been chosen for you. The damaged copy is preserved in Engine Room.';
@@ -865,7 +872,7 @@ async function replaceDemo(samples) {
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
     ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
-    peopleUI?.reset(); personSelection = null;
+    peopleUI?.reset(); revisionsUI?.reset(); personSelection = null;
     artifactTarget = null; artifactSelection = null; branchSelection = null; moveEditing = null; branchEditing = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
@@ -912,7 +919,9 @@ function recoverLegacyCapture() {
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
 }
 peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
-archiveUI = createArchiveUI({getState:()=>state,getEpoch:()=>workspaceEpoch,element,organized,openSource,openThread,downloadText,getEF:()=>efOn,setEF});
+revisionsUI = createRevisionsUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,refreshed,element,organized,downloadText,notice,onSaved:id=>{if(currentView==='fort')archiveUI.refresh(id);}});
+$('revision-directory').addEventListener('toggle',()=>{if($('revision-directory').open)revisionsUI.directory();});
+archiveUI = createArchiveUI({getRevisionUI:()=>revisionsUI,getState:()=>state,getEpoch:()=>workspaceEpoch,element,organized,openSource,openThread,downloadText,getEF:()=>efOn,setEF});
 try {
   store = createStore(); await store.seed(); await refreshed(); workspaceEpoch = (await store.health()).epoch;
   try {
@@ -930,18 +939,18 @@ try {
   addEventListener('focus', () => refreshed().catch(fail));
   showView(routeFromHash(), false);
 } catch (error) {
-  booting = false; $('main').inert = false; $('main').removeAttribute('aria-busy'); storageHealthy = false; state = { captures: [], now: null, spans: [] }; render(); $('capture-open').disabled = false; $('save-capture').disabled = true;
+  booting = false; $('main').inert = false; $('main').removeAttribute('aria-busy'); storageHealthy = false; state = { captures: [], now: null, spans: [], recovery: [], sourceRevisions: [], revisionWarning: 'The workspace could not open. Source history is unknown.' }; render(); $('capture-open').disabled = false; $('save-capture').disabled = true;
   $('storage-count').textContent = 'Saved originals unavailable'; $('now-title').textContent = 'NOW is unavailable.'; $('now-origin').textContent = 'Workspace unavailable'; $('now-reason').textContent = 'The workspace could not open, so its chosen step cannot be shown.';
   recoverLegacyCapture(); status('draft-state', 'Workspace unavailable. You can write and copy text, but saving is unavailable.'); showView('engine', false);
   fail(Error(`The local workspace could not open: ${error.message} Your saved data has not been cleared. Keep this tab open and copy any draft before retrying.`));
 }
 
 async function prepareUpdate() {
-  if (booting || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
+  if (booting || revisionsUI?.busy() || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
   if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {
-    const pending = [['capture', captureBody()], ...(peopleUI?.pendingDrafts()??[]).map(d=>[d.context,d.body])];
+    const pending = [['capture', captureBody()], ...(revisionsUI?.pendingDrafts()??[]).map(d=>[d.context,d.body]), ...(peopleUI?.pendingDrafts()??[]).map(d=>[d.context,d.body])];
     if (moveEditing) pending.push([moveContext(), moveBody()]);
     if (branchEditing) pending.push([`branch:${branchEditing.id}`, branchBody()]);
     if (explorationDraft) pending.push([`explore:${explorationDraft.sourceId}`, exploreBody()]);
