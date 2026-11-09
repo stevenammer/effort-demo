@@ -1,0 +1,10 @@
+{
+  "name": "@effort/storage",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./file": "./file.js",
+    "./indexeddb": "./indexeddb.js"
+  }
+}

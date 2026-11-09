@@ -1,0 +1,13 @@
+{
+  "name": "@effort/core",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./capture": "./capture.js",
+    "./ef": "./ef.js",
+    "./now": "./now.js",
+    "./readable": "./readable.js",
+    "./semantic": "./semantic.js"
+  }
+}

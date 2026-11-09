@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scanPublicText } from '../scripts/check-public.mjs';
+import { scanPublicText, termHash } from '../scripts/check-public.mjs';
 
 test('publication guard rejects local permission files and reports no credential values', () => {
   const sentinel = ['AI', 'za'].join('') + 'x'.repeat(35);
@@ -8,6 +8,12 @@ test('publication guard rejects local permission files and reports no credential
   assert.deepEqual(findings.map((f) => f.rule).sort(), ['google-api-key', 'private-local-file']);
   assert.equal(JSON.stringify(findings).includes(sentinel), false);
   assert.deepEqual(scanPublicText('.env.example', 'GEMINI_API_KEY='), []);
+});
+test('publication guard rejects a planted private denylist fixture', () => {
+  const salt = 'test-salt';
+  const denylist = { configured: true, salt, hashes: new Set([termHash(salt, 'hidden phrase')]) };
+  const findings = scanPublicText('fixture.txt', 'This has a hidden phrase.', denylist);
+  assert.deepEqual(findings.map((finding) => finding.rule), ['private-denylist']);
 });
 test('publication guard covers historical session trailers and personal author metadata', () => {
   const trailer = ['Claude', '-Session:'].join('') + ' https://claude.ai/code/' + ['session_', 'synthetic'].join('');

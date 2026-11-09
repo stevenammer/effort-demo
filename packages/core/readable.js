@@ -1,0 +1,134 @@
+// Display parser extracted from E.F.F.O.R.T. native source; see SOURCE.md.
+
+// This is deliberately a display-only, lossless-ish reader. It never changes the
+// stored string: callers keep the original and render these tokens instead.
+const SAFE_URL = /^https?:\/\/[^\s<>()]+$/i;
+const LOCAL_URL = /^#(?:thread|artifact|branch|person|fort)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const BARE_URL = /https?:\/\/[^\s<>()]+/g;
+const LIST = /^(\s*)([-*+])\s+(.+)$/;
+const ORDERED = /^(\s*)(\d+)[.)]\s+(.+)$/;
+const HEADING = /^(#{1,6})\s+(.+)$/;
+
+function safeUrl(value) {
+  const url = String(value || '').trim();
+  if (LOCAL_URL.test(url) && /^#(?:thread|artifact|branch|person|fort)\//.test(url)) return url;
+  if (!SAFE_URL.test(url)) return null;
+  try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && parsed.hostname && !parsed.username && !parsed.password ? url : null; } catch { return null; }
+}
+
+function trimUrl(value) {
+  return value.replace(/[.,;:!?]+$/, '');
+}
+
+function inline(text) {
+  const source = String(text || '');
+  const out = [];
+  let at = 0;
+  const pushText = (value) => { if (value) out.push({ type: 'text', text: value }); };
+  while (at < source.length) {
+    const rest = source.slice(at);
+    const code = rest.match(/^`([^`]+)`/);
+    if (code) { out.push({ type: 'code', text: code[1] }); at += code[0].length; continue; }
+    const markdownLink = rest.match(/^\[([^\]]+)\]\(([^\s)]+)\)/);
+    if (markdownLink) {
+      const url = safeUrl(markdownLink[2]);
+      if (url) out.push({ type: 'link', text: markdownLink[1], url });
+      else pushText(markdownLink[0]);
+      at += markdownLink[0].length; continue;
+    }
+    const emphasis = rest.match(/^(\*\*|__)(.+?)\1|^(\*|_)([^\n* _][\s\S]*?)\3/);
+    // Underscores in identifiers and filenames aren't prose emphasis.
+    const underscoreInWord = emphasis && emphasis[0][0] === '_' &&
+      (/[\p{L}\p{N}_]/u.test(source[at - 1] || '') || /[\p{L}\p{N}_]/u.test(rest[emphasis[0].length] || ''));
+    if (emphasis && !underscoreInWord) {
+      const strong = !!emphasis[1];
+      out.push({ type: strong ? 'strong' : 'em', text: emphasis[2] || emphasis[4] });
+      at += emphasis[0].length; continue;
+    }
+    BARE_URL.lastIndex = 0;
+    const link = BARE_URL.exec(rest);
+    if (link && link.index === 0) {
+      const url = trimUrl(link[0]);
+      if (safeUrl(url)) out.push({ type: 'link', text: url, url }); else pushText(url);
+      pushText(link[0].slice(url.length));
+      at += link[0].length; continue;
+    }
+    // Advance to the next inline marker instead of dropping unsupported syntax.
+    const next = rest.search(/[`[*_]|https?:\/\//i);
+    if (next > 0) { pushText(rest.slice(0, next)); at += next; }
+    else { pushText(rest[0]); at += 1; }
+  }
+  return out.reduce((merged, token) => {
+    const previous = merged[merged.length - 1];
+    if (token.type === 'text' && previous && previous.type === 'text') previous.text += token.text;
+    else merged.push(token);
+    return merged;
+  }, []);
+}
+
+function isRule(line) { return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line); }
+function tableCells(line) { return line.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim()); }
+function isTableSeparator(line) { return /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line); }
+
+function parseReadable(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  const blocks = [];
+  let i = 0;
+  const paragraph = [];
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push({ type: 'paragraph', content: inline(paragraph.splice(0).join('\n')) });
+  };
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { flushParagraph(); i += 1; continue; }
+    if (/^\s*(?:```|~~~)/.test(line)) {
+      flushParagraph(); const fence = line.match(/^\s*(```+|~~~+)/)[1]; const code = []; i += 1;
+      const closingFence = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
+      while (i < lines.length && !closingFence.test(lines[i])) code.push(lines[i++]);
+      if (i < lines.length) i += 1;
+      blocks.push({ type: 'code', text: code.join('\n') }); continue;
+    }
+    const heading = line.match(HEADING);
+    if (heading) { flushParagraph(); blocks.push({ type: 'heading', level: heading[1].length, content: inline(heading[2]) }); i += 1; continue; }
+    if (isRule(line)) { flushParagraph(); blocks.push({ type: 'rule' }); i += 1; continue; }
+    if (/^\s*>\s?/.test(line)) {
+      flushParagraph(); const quote = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) quote.push(lines[i++].replace(/^\s*>\s?/, ''));
+      blocks.push({ type: 'quote', content: inline(quote.join('\n')) }); continue;
+    }
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      flushParagraph(); const rows = [tableCells(line)]; i += 2;
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(tableCells(lines[i++]));
+      blocks.push({ type: 'table', rows: rows.map((row) => row.map(inline)) }); continue;
+    }
+    const match = line.match(LIST) || line.match(ORDERED);
+    if (match) {
+      flushParagraph(); const ordered = !!line.match(ORDERED); const items = [];
+      while (i < lines.length) {
+        const item = ordered ? lines[i].match(ORDERED) : lines[i].match(LIST);
+        if (!item) break;
+        const indent = item[1].length; const textPart = item[3]; const children = []; i += 1;
+        while (i < lines.length && lines[i].trim() && !lines[i].match(ordered ? ORDERED : LIST) && /^\s+/.test(lines[i])) children.push(lines[i++].trim());
+        items.push({ marker: ordered ? item[2] : null, indent, content: inline([textPart, ...children].join('\n')) });
+      }
+      blocks.push({ type: 'list', ordered, items }); continue;
+    }
+    paragraph.push(line); i += 1;
+  }
+  flushParagraph();
+  return blocks;
+}
+
+function inlineText(tokens) { return tokens.map((token) => token.text).join(''); }
+function readablePreview(text, maxLength = 720) {
+  const value = parseReadable(text).map((block) => {
+    if (block.type === 'rule') return '';
+    if (block.type === 'code') return block.text;
+    if (block.type === 'table') return block.rows.map((row) => row.map(inlineText).join(' · ')).join('\n');
+    if (block.type === 'list') return block.items.map((item) => `${block.ordered ? `${item.marker}.` : '•'} ${inlineText(item.content)}`).join('\n');
+    return inlineText(block.content);
+  }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1).trimEnd()}…` : value;
+}
+
+export { safeUrl, inline, parseReadable, readablePreview };

@@ -9,6 +9,8 @@
     "test": "node --test",
     "check:public": "node scripts/check-public.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
+    "check:core": "node scripts/sync-core.mjs --check",
+    "check:mutations": "node scripts/mutate-check.mjs",
     "helper": "node scripts/helper-companion.mjs"
   },
   "engines": {
