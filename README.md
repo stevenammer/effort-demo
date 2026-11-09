@@ -84,6 +84,8 @@ PLAYWRIGHT_DIR=/path/to/playwright node scripts/artifact-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/artifact-upgrade-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/thinking-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/opened-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/people-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/redteam-reading-browser-check.mjs
 ```
 
 It uses synthetic text and checks 1440px, 390px and 320px layouts, draft recovery, explicit promotion, named spans, nested replies, search, permalinks, original preservation, hold/resume, self-reported receipts, old-backup behavior, export/restore, failure recovery and absence of external requests. Set `CHROME_PATH` if Chrome isn't at `/usr/bin/google-chrome`. Screenshots go to `/tmp/effort-demo-screens` unless `DEMO_SCREEN_DIR` is set.
@@ -94,7 +96,7 @@ The offline check uses actual service workers and synthetic releases on a reposi
 
 Set `DEMO_BASE_URL=https://stevenammer.github.io/effort-demo` to run the same browser acceptance against the hosted walkthrough. It uses an isolated browser context with fictional data and doesn't connect to the private app.
 
-The exploration check exercises nested branches and all four dials, self-authored distillations, the promotion boundary, exact return context, failed-write drafts, cross-tab updates, backup restore and offline reopen. The public backup is now version 10; versions 1 through 9 remain accepted. Exploration and distillation records share a 4 MiB encoded JSON budget, with 4,000 characters per note. Checksums verify stored bytes, not truth or authorship. See [the exploration contract](docs/EXPLORATION.md) for the product decisions and remaining limits.
+The exploration check exercises nested branches and all four dials, self-authored distillations, the promotion boundary, exact return context, failed-write drafts, cross-tab updates, backup restore and offline reopen. The public backup is now version 11; versions 1 through 10 remain accepted. Exploration and distillation records share a 4 MiB encoded JSON budget, with 4,000 characters per note. Checksums verify stored bytes, not truth or authorship. See [the exploration contract](docs/EXPLORATION.md) for the product decisions and remaining limits.
 
 ## Attribution
 
@@ -102,8 +104,10 @@ Product requirements and decisions: Steven Ammer. Implementation is AI-assisted,
 
 Original demonstration code is MIT licensed. No third-party libraries, fonts or images are bundled.
 
-Connected files are stored with their exact bytes and source links, with limits of 2 MiB per file and 8 MiB combined encoded JSON. Text/plain previews are passive and bounded; other types are downloadable. See [the file and recovery contract](docs/ARTIFACTS.md). CI also runs `npm run check:syntax` for the browser entry point.
+Connected files are stored with their exact bytes and source links, with limits of 2 MiB per file and 8 MiB combined encoded JSON. Text/plain previews are passive and bounded; other types are downloadable. See [the file and recovery contract](docs/ARTIFACTS.md). CI also runs `npm run check:syntax` for every browser and worker module.
 
 Thinking moves are optional prompts you can edit, turn off or add yourself. A branch preserves the exact prompt it used. Status changes keep history without creating work; examples appear only when you explicitly tag them. Open Moves through Attention Spans for definitions and chosen examples. See [the thinking and recovery contract](docs/THINKING.md).
 
 Attention Spans show exact posts and replies not opened here. Opening a thread acknowledges only its displayed writing; later replies keep their own status, even with older timestamps. This records opening, not reading, agreement or completion. See [the opening-context contract](docs/OPENED.md).
+
+People keeps optional relationship context, manually selected source links, exact revision history and self-reported conversations inside its Attention Span. Contact drafts preserve timezone intent, including ambiguous DST times; editing context never logs a conversation or changes NOW. See [the People contract](docs/PEOPLE.md).

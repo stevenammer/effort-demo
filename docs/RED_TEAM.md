@@ -27,7 +27,7 @@ The active goal includes parity with the actual app and its intention, followed 
 
 | A lost offline readiness response could leave the status stuck until another lifecycle event. | Retry status probes with a bounded limit, observe already-installing workers and never advertise unverified readiness. | Four deterministic lifecycle/retry tests and real offline/update browser regression pass. |
 | Exploration looked available before the preceding save had finished, so a fast click was ignored. | Enabled controls must reflect real save/load readiness without replacing the reading DOM. | Exploration browser regression passes after readiness controls were tied to pending state. |
-| Case-variant local-route prefixes could lose a rejected destination in the readable view. | Unsupported prefixes stay literal and inactive. | Exact parser regression passes; hostile browser recheck pending. |
+| Case-variant local-route prefixes could lose a rejected destination in the readable view. | Unsupported prefixes stay literal and inactive. | Exact parser regression and hostile browser recheck pass at1440/390/320. |
 
 ## Further campaigns, still required
 
