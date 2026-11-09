@@ -39,7 +39,7 @@ The active goal includes parity with the actual app and its intention, followed 
 
 | A completed exploration could redirect after the person had navigated away or dismissed its pending save. | Keep the chosen view when the original save context has ended; still preserve exactly one branch and unchanged NOW. | Thinking acceptance exposed it. New exploration-navigation-browser-check.mjs reproduced expected Engine Room versus actual thread, then passes navigation/dismissal after a guarded redirect fix. |
 
-| Structured storage could contain an explicit undefined provenance field that validation accepted, while JSON export silently dropped it. | Reject present-but-undefined parent and derivation fields before sealing, projecting or exporting; preserve damaged raw data and hold affected chosen work as unknown. | A new storage regression failed before Object.hasOwn presence checks. All235 tests pass after the fix, including quarantine and NOW recovery. Final proposal/core/offline/real-upgrade browser checks pass. |
+| Structured storage could contain an explicit undefined provenance field that validation accepted, while JSON export silently dropped it. | Reject present-but-undefined parent and derivation fields before sealing, projecting or exporting; preserve damaged raw data and hold affected chosen work as unknown. | A new storage regression failed before Object.hasOwn presence checks. All235 tests pass after the fix, including quarantine and NOW recovery. Final proposal/core/offline/real-upgrade browser checks pass. The release is published; hosted proposal/fault, core and hostile-reader acceptance pass1440/390/320. |
 
 ## Further campaigns, still required
 
