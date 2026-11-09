@@ -64,6 +64,10 @@ Parent full suite: **165/165 pass**. Focused storage integration also covers bac
 
 Local core, thinking, proposal, file, exploration, draft and composer browser regressions pass. Offline/update acceptance passed on diagnostic rerun after one persistent-browser readiness timeout that did not reproduce; diagnostics now report readiness/controller/cache state on failure. The actual published DB7 client upgrades to DB8 with exact files, move/branch histories, two draft copies and late stale-tab writing preserved. A fresh clone of5260d90 passes offline install, all165 tests, syntax and the80-file publication guard. People relationships are the next connected-depth slice, followed by explicitly invoked bounded help and the remaining full map. Continue from main. Native People fields are name, relationship, notes, important dates, things they told me, things I told them and optional cadence. Preserve revisions and drafts, use manual exact-source links and self-reported contact receipts, and keep messages, inferred relationship judgments and obligations out of the flow.
 
+### Reading continuity follow-up
+
+A post-release hosted core smoke check exposed a redraw race: opening-status acknowledgement could rebuild the thread/source dialog while the person was opening or downloading the original. The local follow-up patches only opening summaries and badges when writing hasn't changed, preserving the reading DOM and disclosures. The full165-test suite passes. Core smoke selection also now waits for the matching saved capture rather than assuming the first recent card is already refreshed. Targeted browser acceptance holds an acknowledgement pending, opens/downloads the original, then checks disclosure and source-dialog DOM preservation. Local browser gates and republishing this follow-up are in progress; finish them before the People slice.
+
 ## Resume here
 
 1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.

@@ -25,7 +25,7 @@ let explorationDraft = null, distillationDraft = null, explorationSaving = false
 let moveEditing = null, moveEpoch, moveSaving = false, moveLoading = false, branchEditing = null, branchEpoch, branchSaving = false, branchLoading = false;
 let branchSelection = null, branchFocusPending = false;
 const proposalPending = new Set();
-let threadOpeningPending = false, openingViewToken = 0;
+let threadOpeningPending = false, openingViewToken = 0, renderedOpening = null;
 const openingPending = new Map(), openingErrors = new Map();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
 const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
@@ -70,7 +70,7 @@ function showView(route, focus = true) {
   currentView = base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
   try { activeSpan = (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
   const nextThread = base === 'branch' && branchSource ? branchSource.id : base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
-  if (threadId !== nextThread) { openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
+  if (threadId !== nextThread) { renderedOpening = null; openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
     if (button.dataset.view === (currentView === 'thread' ? 'spans' : currentView)) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -128,8 +128,22 @@ async function recordOpened(rootId, items) {
   const generation = epoch, expectedEpoch = workspaceEpoch, operation = {}; openingPending.set(rootId, operation); openingErrors.delete(rootId);
   try { await store.markOpened({ items }, { expectedEpoch }); if (generation !== epoch || workspaceEpoch !== expectedEpoch) return; await refreshed(); }
   catch (error) { if (generation === epoch && workspaceEpoch === expectedEpoch) openingErrors.set(rootId, `Opening status wasn't saved: ${error.message} Your writing and NOW are unchanged.`); }
-  finally { if (openingPending.get(rootId) === operation) openingPending.delete(rootId); if (generation === epoch && workspaceEpoch === expectedEpoch && state) { renderSpans(); renderThread(); } }
+  finally { if (openingPending.get(rootId) === operation) openingPending.delete(rootId); if (generation === epoch && workspaceEpoch === expectedEpoch && state) { refreshOpeningSummaries(); refreshOpeningContext(); } }
 }
+function openingBadge(capture, reading) { return state.openedWarning || reading.opened.has(capture.id) ? null : reading.unknown.has(capture.id) ? 'Opening status needs recovery' : 'Not opened in this view yet'; }
+function refreshOpeningSummaries() {
+  const reading = openingState(), byId = new Map(state.captures.map(c => [c.id, c]));
+  for (const node of document.querySelectorAll('[data-opening-span], [data-opening-thread]')) { const captures = state.captures.filter(c => node.dataset.openingSpan ? spanKey(c.span) === node.dataset.openingSpan : threadRoot(c, byId)?.id === node.dataset.openingThread); node.textContent = openingSummary(captures, reading); }
+  const span = (state.spans ?? []).find(s => s.id === activeSpan); if (span) $('span-description').textContent = descriptions[span.kind] + (state.openedWarning ? ` ${state.openedWarning}` : '');
+}
+function refreshOpeningContext() {
+  if (currentView !== 'thread' || replyLoading || !renderedOpening || renderedOpening.destination !== threadId) return;
+  const captures = renderedOpening.ids.map(id => state.captures.find(c => c.id === id)), root = captures[0]; if (!root || captures.some(c => !c)) return;
+  const reading = openingState();
+  for (const capture of captures.slice(1)) { const card = $(`reply-${capture.id}`); if (!card) continue; const previous = card.querySelector('.unopened-badge'), text = openingBadge(capture, reading); if (!text) previous?.remove(); else if (previous) previous.textContent = text; else card.append(element('p', text, 'small unopened-badge')); }
+  renderOpeningContext(root, captures);
+}
+const writingState = ({ openedReceipts, openedWarning, ...rest }) => JSON.stringify(rest);
 function renderOpeningContext(root, captures) {
   const reading = openingState(), missing = captures.filter(c => !reading.opened.has(c.id)), panel = $('thread-opening'); panel.replaceChildren();
   panel.append(element('p', state.openedWarning || openingErrors.get(root.id) || openingSummary(captures, reading), 'small opening-status'));
@@ -155,7 +169,7 @@ function renderSpans() {
     card.append(element('span', s.kind === 'journal' ? 'ATTENTION SPAN' : s.kind.toUpperCase(), 'eyebrow'), element('h2'));
     card.querySelector('h2').append(link); card.append(element('p', descriptions[s.kind], 'small'));
     card.append(element('p', `${posts.length} post${posts.length === 1 ? '' : 's'} · ${all.length - posts.length} repl${all.length - posts.length === 1 ? 'y' : 'ies'}${latest ? ` · ${formatDate(latest.createdAt)}` : ' · Ready when you are'}`, 'small'));
-    if (all.length) card.append(element('p', openingSummary(all, reading), 'small opening-summary'));
+    if (all.length) { const summary = element('p', openingSummary(all, reading), 'small opening-summary'); summary.dataset.openingSpan = s.id; card.append(summary); }
     if (latest) card.append(element('p', displayTitle(latest.text, 110), 'span-preview'));
     return card;
   }));
@@ -170,7 +184,7 @@ function renderSpans() {
     const group = element('article', undefined, 'journal-post'); const heading = element('div', undefined, 'entry-heading');
     heading.append(element('span', `${formatDate(capture.createdAt)} · ${capture.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'));
     group.append(heading, element('h2', displayTitle(capture.text, 90)), element('p', readablePreview(capture.text, 360), 'post-excerpt'));
-    const related = state.captures.filter(c => threadRoot(c, byId)?.id === capture.id); group.append(element('p', openingSummary(related, reading), 'small opening-summary'));
+    const related = state.captures.filter(c => threadRoot(c, byId)?.id === capture.id), summary = element('p', openingSummary(related, reading), 'small opening-summary'); summary.dataset.openingThread = capture.id; group.append(summary);
     const replyCount = counts.get(capture.id) ?? 0;
     const actions = element('div', undefined, 'post-actions'); const open = element('button', `Open thread · ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}`, 'text-button'); open.onclick = () => openThread(capture.id);
     const original = element('button', 'See original ↗', 'text-button'); original.onclick = () => openSource(capture.id, true);
@@ -184,7 +198,7 @@ function renderThread() {
   const requested = state.captures.find(c => c.id === threadId), root = requested && threadRoot(requested, state.captures);
   const main = $('thread-post'); main.replaceChildren();
   $('thread-permalink').hidden = $('reply-to-root').hidden = !root;
-  if (!root) { $('thread-opening').replaceChildren(); $('thread-explorations').replaceChildren(); $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
+  if (!root) { renderedOpening = null; $('thread-opening').replaceChildren(); $('thread-explorations').replaceChildren(); $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
   $('reply-form').hidden = false; $('thread-permalink').href = `#thread/${root.id}`;
   $('back-feed').onclick = () => openSpan(spanKey(root.span));
   main.append(element('span', `${root.span} · ${formatDate(root.createdAt)} · ${root.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'), element('h1', displayTitle(root.text, 110)));
@@ -211,7 +225,7 @@ function renderThread() {
   $('thread-replies').replaceChildren(...rows.map(({ capture, depth }) => {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
     card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
-    if (!state.openedWarning && !reading.opened.has(capture.id)) card.append(element('p', reading.unknown.has(capture.id) ? 'Opening status needs recovery' : 'Not opened in this view yet', 'small unopened-badge'));
+    const badge = openingBadge(capture, reading); if (badge) card.append(element('p', badge, 'small unopened-badge'));
     const provenance = proposalProvenance(capture); if (provenance) card.append(provenance);
     const files = attachedFiles(capture); if (files) card.append(files);
     const actions = element('div', undefined, 'post-actions'); const button = element('button', 'Reply to this', 'text-button'); button.onclick = () => targetReply(capture.id);
@@ -225,6 +239,7 @@ function renderThread() {
   const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
   $('reply-target').textContent = validTarget ? `Replying to: ${displayTitle(target.text, 100)}` : 'Choose a reply target before saving. Your draft is still here.';
   $('reply-to-root').onclick = () => targetReply(root.id);
+  renderedOpening = { destination: threadId, ids: [root.id, ...rows.map(row => row.capture.id)] };
   renderExplorations(root); renderOpeningContext(root, [root, ...rows.map(row => row.capture)]); focusArtifact(); focusBranch();
 }
 function renderExplorations(root) {
@@ -596,14 +611,15 @@ $('reply-form').onsubmit = async event => {
 };
 function refreshed() {
   refreshing = refreshing.catch(() => {}).then(async () => {
-    state = await store.read({ includeDrafts: false }); const health = await store.health();
-    if (workspaceEpoch !== undefined && health.epoch !== workspaceEpoch) { openingViewToken++; threadOpeningPending = false; openingPending.clear(); openingErrors.clear(); fenced = true; adopted.clear(); status('draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); status('reply-draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); } workspaceEpoch = health.epoch;
+    const previous = state; state = await store.read({ includeDrafts: false }); const openingOnly = previous && writingState(previous) === writingState(state); const health = await store.health();
+    if (workspaceEpoch !== undefined && health.epoch !== workspaceEpoch) { renderedOpening = null; openingViewToken++; threadOpeningPending = false; openingPending.clear(); openingErrors.clear(); fenced = true; adopted.clear(); status('draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); status('reply-draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); } workspaceEpoch = health.epoch;
     storageHealthy = true; $('capture-open').disabled = booting;
     if (artifactSelection) {
       const file = state.artifacts?.find(a => a.id === artifactSelection), source = file && state.captures.find(c => c.id === file.captureId);
       if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false);
     }
     if (branchSelection) { const branch = state.explorations?.find(b => b.id === branchSelection), source = branch && state.captures.find(c => c.id === branch.sourceId); if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false); }
+    if (openingOnly) { refreshOpeningSummaries(); refreshOpeningContext(); return; }
     render();
     $('recovery-panel').hidden = !state.recovery.length && !health.migrationWarning;
     const damagedOriginals = state.recovery.filter(record => record.source !== 'draft').length, draftCopies = state.recovery.length - damagedOriginals;
@@ -834,7 +850,7 @@ async function replaceDemo(samples) {
     for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
-    openingViewToken++; threadOpeningPending = false; openingPending.clear(); openingErrors.clear();
+    renderedOpening = null; openingViewToken++; threadOpeningPending = false; openingPending.clear(); openingErrors.clear();
     for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog', 'artifact-dialog', 'move-dialog', 'branch-dialog']) if ($(id).open) $(id).close();
     workspaceEpoch = (await store.health()).epoch; fenced = false;
     try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }

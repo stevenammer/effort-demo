@@ -35,7 +35,7 @@ try {
     await page.locator('#save-capture').click(); await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
     assert.equal(await page.locator('#now-title').innerText(), now);
     await page.locator('[data-view="home"]').click();
-    await page.locator('#recent .entry-card').first().getByRole('button').click();
+    await page.locator('#recent .entry-card').filter({ hasText: 'Maybe make a workshop exercise' }).getByRole('button').click();
     await page.locator('#show-raw').click(); assert.equal(await page.locator('#source-body pre').innerText(), original);
     await page.locator('#show-organized').click();
     assert.equal(await page.evaluate(() => window.injected), undefined);
@@ -133,8 +133,8 @@ try {
     assert.equal(await page.locator('#now-title').innerText(), heldChoice);
     await page.locator('#capture-open').click(); const different = "I'll review a different fictional note.";
     await page.locator('#capture-text').fill(different); await page.locator('#capture-span').selectOption('Unsorted'); await page.locator('#save-capture').click(); await page.locator('#capture-dialog').waitFor({ state: 'hidden' });
-    await page.locator('#recent .entry-card').first().getByRole('button').click();
-    await page.locator('#source-body .fragment').filter({ hasText: different }).getByRole('button').click();
+    await page.locator('#recent .entry-card').filter({ hasText: different.slice(0, -1) }).getByRole('button').click();
+    await page.locator('#source-body .fragment').filter({ hasText: different.slice(0, -1) }).getByRole('button').click();
     await page.locator('#now-title').getByText(different, { exact: true }).waitFor(); await page.reload();
     await page.locator('#return-card').waitFor(); await page.locator('#resume-place').click();
     await page.locator('#now-title').getByText(heldChoice, { exact: true }).waitFor();
