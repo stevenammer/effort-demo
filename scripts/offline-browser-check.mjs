@@ -76,6 +76,9 @@ try{
     const recovered=savedPage.locator('#draft-recovery-items details').filter({hasText:'Draft across browser restart.'}).first();
     await recovered.locator('summary').click(); await recovered.getByRole('button',{name:'Recover into this tab',exact:true}).click();
     await savedPage.locator('#capture-open').click(); assert.equal(await savedPage.locator('#capture-text').inputValue(),'Draft across browser restart.');
+  } catch (error) {
+    for (const p of persistent?.pages() ?? []) { console.error('PERSISTENT OFFLINE DIAGNOSTIC', await p.evaluate(async()=>({url:location.href,status:document.querySelector('#offline-status')?.textContent,controller:navigator.serviceWorker.controller?.scriptURL,registrations:(await navigator.serviceWorker.getRegistrations()).map(r=>({scope:r.scope,installing:r.installing?.state,waiting:r.waiting?.state,active:r.active?.state})),caches:await caches.keys()})).catch(e=>({diagnosticError:e.message}))); }
+    throw error;
   } finally { await persistent?.close(); await rm(profile,{recursive:true,force:true}); }
   const initialBad=next(b.files,'initial-failure'); initialBad.files.set('public/style.css',Buffer.from('/* Incorrect but harmless synthetic style bytes. */')); files=initialBad.files;
   const firstFailure=observe(await browser.newContext());
