@@ -920,8 +920,8 @@ function recoverLegacyCapture() {
 }
 peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
 revisionsUI = createRevisionsUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,refreshed,element,organized,downloadText,notice,onSaved:id=>{if(currentView==='fort')archiveUI.refresh(id);}});
-$('revision-directory').addEventListener('toggle',()=>{if($('revision-directory').open)revisionsUI.directory();});
-archiveUI = createArchiveUI({getRevisionUI:()=>revisionsUI,getState:()=>state,getEpoch:()=>workspaceEpoch,element,organized,openSource,openThread,downloadText,getEF:()=>efOn,setEF});
+$('revision-directory').addEventListener('toggle',async()=>{if(!$('revision-directory').open)return;try{await refreshed();if($('revision-directory').open)revisionsUI.directory();}catch(error){fail(error);}});
+archiveUI = createArchiveUI({refreshState:refreshed,onError:fail,getRevisionUI:()=>revisionsUI,getState:()=>state,getEpoch:()=>workspaceEpoch,element,organized,openSource,openThread,downloadText,getEF:()=>efOn,setEF});
 try {
   store = createStore(); await store.seed(); await refreshed(); workspaceEpoch = (await store.health()).epoch;
   try {

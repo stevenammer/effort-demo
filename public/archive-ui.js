@@ -1,7 +1,7 @@
 import { sourceRevisionState } from './revisions.js';
 import { archiveSnapshot, archiveWindow } from './archive.js';
 
-export function createArchiveUI({ getState, getEpoch, element, organized, openSource, openThread, downloadText, getEF, setEF, getRevisionUI }) {
+export function createArchiveUI({ getState, getEpoch, element, organized, openSource, openThread, downloadText, getEF, setEF, getRevisionUI, refreshState, onError }) {
   const $ = id => document.getElementById(id);
   let rows = [], next = 0, start = 0, query = '', selection = null, loaded = false, epoch, signature = '', projectionSnapshot;
   const fingerprint = state => JSON.stringify([state.captures.map(({text,...metadata})=>metadata),(state.sourceRevisions??[]).map(row=>[row.id,row.hash]),(state.recovery??[]).filter(row=>row.source==='sourceRevisions').map(row=>row.id),state.revisionWarning]);
@@ -40,7 +40,7 @@ export function createArchiveUI({ getState, getEpoch, element, organized, openSo
   }
   $('fort-search-form').onsubmit = event => { event.preventDefault(); query = $('fort-search').value.trim(); selection = null; snapshot(null); };
   $('fort-clear').onclick = () => { $('fort-search').value = ''; query = ''; selection = null; snapshot(null); };
-  $('fort-refresh').onclick = () => snapshot();
+  $('fort-refresh').onclick = async () => { $('fort-refresh').disabled=true;try{await refreshState();snapshot();}catch(error){onError(error);}finally{$('fort-refresh').disabled=false;} };
   $('fort-more').onclick = () => { const page = archiveWindow(rows, { offset: next }); $('fort-entries').append(...page.rows.map(card)); next = page.next; counts(); };
   $('fort-ef').onclick = () => setEF(!getEF());
   return {

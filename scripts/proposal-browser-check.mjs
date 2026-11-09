@@ -311,7 +311,7 @@ try {
   await offlineContext.close();
 
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-  console.log('PASS: proposal preparation and explicit exact choice; sandbox refusal; exact lineage and inert text; idempotent readback retry and duplicate guard; live cross-tab state; backup v11/reset/restore and v6 upgrade; damaged distillation recovery with intact proposal; async reset fencing; offline reopen; keyboard flow; 1440px/390px/320px. No page errors or external requests.');
+  console.log('PASS: proposal preparation and explicit exact choice; sandbox refusal; exact lineage and inert text; idempotent readback retry and duplicate guard; live cross-tab state; backup v12/reset/restore and v6 upgrade; damaged distillation recovery with intact proposal; async reset fencing; offline reopen; keyboard flow; 1440px/390px/320px. No page errors or external requests.');
 } finally {
   await browser.close();
   if (server) await new Promise(resolve => server.close(resolve));
