@@ -26,6 +26,7 @@ async function alternate(record, body) { const { hash, ...payload } = record; re
 test('recovery never overwrites substantive people, move, exploration, branch or contact drafts', async () => {
   const x = setup(), person = id(), branch = id(), source = id(), dist = id();
   const cases = [
+    [`review:${source}`,{sourceId:source,contextIds:[source],question:'Keep this exact question.\r\nStill open.',requestedResult:'OPTIONS',state:'REVIEW',invited:['critic'],requestId:id()},b=>({...b,question:'Another request.'})],
     ['person', personBody(person), b => ({ ...b, profile: { ...b.profile, notes: 'Other person writing.' } })],
     [`contact:${person}`, contactBody(person), b => ({ ...b, note: 'Different note.' })],
     ['move', moveBody(), b => ({ ...b, prompt: 'Another prompt.' })],

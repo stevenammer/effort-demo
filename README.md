@@ -54,13 +54,13 @@ The existing Android source passed **41 suites and 393 tests** on November 7, 20
 ## Data and limitations
 
 - Examples are fictional. Use fictional text when trying it.
-- Demo data and drafts are stored as plaintext in this browser profile. No accounts, trackers, model calls or private services are connected.
+- Demo data and drafts are stored as plaintext in this browser profile. No accounts or trackers. Helpers are off until you configure a self-hosted companion and explicitly approve/start a selected-context invitation. See [THREAD review](docs/THREAD_REVIEW.md). No private service is paired automatically.
 - Offline storage contains a fixed set of public app files, never capture text, backup downloads or arbitrary requests. Previous app caches are retained so older tabs can keep their matching version. Cache storage grows with releases and remains subject to browser eviction. Offline readiness requires one complete connected visit. If a browser restart opens a fresh tab without its previous identity, use Engine Room → Draft recovery to bring the retained writing into that tab.
 - Browser storage can be cleared by the browser, its owner, or other code on the same origin. Checksums detect accidental changes; they don't make the browser a trusted security boundary.
 - Drafts have verified revisions and per-tab identities. A cloned tab forks the writing rather than overwriting it. Where supported, browser Web Locks retain a tab's identity across reloads; fallback copies remain available in Engine Room. Failed draft writes retain an emergency localStorage copy when available. If both storage mechanisms fail, keep the window open and copy the writing.
 - IndexedDB transactions serialize writes across tabs. Change notifications and window activation refresh the displayed workspace.
 - Classification can be wrong. A suggested category never creates a commitment or executes an action.
-- Voice, agents, notifications, cloud sync and native phone backup/restore are outside this demonstration.
+- Voice capture, repository execution, notifications, cloud sync and native phone backup/restore remain outside the released demonstration. This branch adds optional text-only helper execution; its release gates remain in CURRENT_STATE.md.
 - Workspace limits: 100 named Attention Spans, 1,000 captures (including replies), 4,000 UTF-16 code units per capture, 2,000,000 total, and 32 MB per backup. A failed save preserves its draft; a conflicting or corrupt restore is refused before writing.
 - Draft limits: 1,000 records and 4,000,000 JSON characters, with bounded emergency recovery. A deliberate reset fences delayed writes and passive drafts in other tabs. Capture and return-point retries reuse a workspace-scoped request, so an accepted save followed by a confirmation failure doesn't duplicate it.
 - The previous browser format migrates without deleting its original copy. Damaged records are preserved in a recovery area, included in downloads, and isolated from verified originals. Replies whose parent needs recovery remain readable. New capture does not depend on every old record being valid.

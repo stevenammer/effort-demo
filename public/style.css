@@ -915,3 +915,8 @@ input[type=file] { max-width:100%; min-width:0; }
 .source-revision-panel { margin:1rem 0; }
 .source-revision-panel pre,#revision-current { max-height:20rem; overflow:auto; }
 .revision-disclosure { margin:1rem 0; }
+
+.original-disclosure .small, #thread-review summary, #helper-status, #review-route, .helper-reply .small { overflow-wrap:anywhere; }
+#thread-review, .helper-reply { min-width:0; }
+.helper-reply .raw { max-height:22rem; overflow:auto; }
+#thread-review-dialog fieldset { min-inline-size:0; border:1px solid var(--line); margin:1rem 0; border-radius:8px; }

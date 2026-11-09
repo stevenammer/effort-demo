@@ -41,6 +41,14 @@ The active goal includes parity with the actual app and its intention, followed 
 
 | Structured storage could contain an explicit undefined provenance field that validation accepted, while JSON export silently dropped it. | Reject present-but-undefined parent and derivation fields before sealing, projecting or exporting; preserve damaged raw data and hold affected chosen work as unknown. | A new storage regression failed before Object.hasOwn presence checks. All235 tests pass after the fix, including quarantine and NOW recovery. Final proposal/core/offline/real-upgrade browser checks pass. The release is published; hosted proposal/fault, core and hostile-reader acceptance pass1440/390/320. |
 
+## THREAD/helper continuation, not yet released
+
+The feature/thread-review-20261109 branch runs a real HTTP companion against synthetic Ollama protocol fixtures. No actual model or private backend was used. Immutable review-hash binding refuses re-association with substituted context. Storage tests cover ambiguous claim readback (zero dispatch), simultaneous tabs, optional-table outages, corrupt chains, prefix restoration, stopped/reset late responses and exact backup14 transport.
+
+An accepted answer with a lost first readback was falsely described as unapplied. The new test fails before the fix; the runtime now verifies the exact sealed saved result from a fresh history snapshot without another inference. Repro: /tmp/effort-helper-readback-repro.log.
+
+Three-width browser acceptance passes for saved-before-egress, exact selection, explicit role starts/stops, literal hostile output, exact downloads, request draft reload, backup/reset/restore and offline reading. The local preview had a stricter legacy CSP header than the page; both now permit only same-origin/loopback helper connections. Expanded reading continuity exposed an overflowing original checksum on phones; the source checksum now wraps. General connection/date/permission/model quality and wider event-sequence campaigns remain.
+
 ## Further campaigns, still required
 
 The FORT slice additionally executes a real browser1,000-original fixture with50 rendered cards, refused over-capacity capture with exact draft retention, invalidated-source removal and clearing hidden archive/draft projections on reset. Exact source offsets and whole-workspace entity limits still require the wider audit.
