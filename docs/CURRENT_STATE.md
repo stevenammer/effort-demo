@@ -66,7 +66,7 @@ Local core, thinking, proposal, file, exploration, draft and composer browser re
 
 ### Reading continuity follow-up
 
-A post-release hosted core smoke check exposed a redraw race: opening-status acknowledgement could rebuild the thread/source dialog while the person was opening or downloading the original. The local follow-up patches only opening summaries and badges when writing hasn't changed, preserving the reading DOM and disclosures. The full165-test suite passes. Core smoke selection also now waits for the matching saved capture rather than assuming the first recent card is already refreshed. Targeted browser acceptance holds an acknowledgement pending, opens/downloads the original, then checks disclosure and source-dialog DOM preservation. Local browser gates and republishing this follow-up are in progress; finish them before the People slice.
+A post-release hosted core smoke check exposed a redraw race: opening-status acknowledgement could rebuild the thread/source dialog while the person was opening or downloading the original. Follow-up bd0115e patches only opening summaries and badges when writing hasn't changed, preserving the reading DOM and disclosures. The full165-test suite and a fresh-checkout offline install/165/syntax/publication guard pass. Core smoke selection also now waits for the matching saved capture rather than assuming the first recent card is already refreshed. Targeted browser acceptance holds an acknowledgement pending, opens/downloads the original, then checks disclosure and source-dialog DOM preservation. Local core, held-acknowledgement reading, thinking, composer and offline/update browser checks pass after the fix. Republish and verify the follow-up before the People slice.
 
 ## Resume here
 
