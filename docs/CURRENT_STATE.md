@@ -4,7 +4,7 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-Published `main` runtime is **4d65061**. Exact correction/transcript proposals join separate source revisions, FORT/live EF, People, opening context, thinking, connected files and exploration proposals. Schema11 / backup13 imports1..12. The active checkout is **feature/thread-review-20261109**, an unpublished schema14/backup16 continuation. Inspect actual Git state before resuming.
+Published `main` runtime is **4d65061**. Exact correction/transcript proposals join separate source revisions, FORT/live EF, People, opening context, thinking, connected files and exploration proposals. Schema11 / backup13 imports1..12. The active checkout is **feature/thread-review-20261109**, an unpublished schema15/backup17 continuation. Inspect actual Git state before resuming.
 
 The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
@@ -129,6 +129,14 @@ The current checkout advances to **schema14 / backup16**, importing1..15. Main r
 Parent282 tests pass and36 browser/worker modules pass syntax. New three-width structured-helper browser acceptance passes using the real companion with a synthetic Ollama server. Context-window, incomplete stop, malformed/foreign-source output, protocol downgrade, readback ambiguity and near-capacity pre-dispatch reservation tests pass. Malformed embedded receipt restoration is refused atomically without changing existing proposals or backup. All20 workflow/browser suites pass sequentially, with logs /tmp/effort-structured-helper-regression-*.log. The actual published869649e DB11-to14 service-worker update preserves exact files, thinking, People/source revisions, two drafts and late stale-tab writing. The earlier helper checkpoint4b96f29 DB13-to14 additionally preserves exact approvals, attempt histories, request drafts, a prepared helper proposal and its chosen quote; old answers remain visibly unstructured. A fresh clone of runtime8e0d10b at /tmp/effort-structured-helper-checkpoint-H1AlYR passes offline install, all282 tests,36-module syntax, shell verification and the129-file/history publication guard.
 
 Expanded structured-metadata/raw-receipt panels also pass no-overflow checks at1440/390/320; the320px screenshot was inspected. No actual model was loaded or called. Cross-device HTTPS/pairing, real self-hosted inference and publication/hosted gates remain before completing this helper slice. The full PARITY map and additional adversarial campaign remain before See / Spec / Send.
+
+## Active continuation: HTTPS companion and optional pairing
+
+The checkout now uses **schema15 / backup17**, importing1..16, to fence older strict readers from new HTTPS approval routes. The companion supports operator-supplied TLS with exact origin/Host/token binding; non-loopback listeners require HTTPS. Optional explicit browser pairing preloads fields after reload but makes no request and requires a fresh check. Credentials remain outside workspace/drafts/backups, with explicit forget and reset removal. Static page/preview CSP permit HTTPS connections; the worker remains same-origin only. See HELPER_CONNECTIONS.md.
+
+Parent290 tests and37-module syntax pass. Trusted real TLS fixtures test configured route/result preservation and Host/Origin/token refusal; pairing tests caught and fixed null URLs being mistaken for absent verified endpoints. Actual Chrome HTTPS acceptance passes1440/390/320 with a synthetic Ollama server, including remembered reload without requests, recheck, explicit starts, forget, reset removal, backup17 restoration and offline reading. Broader workflow/old-client/fresh-clone checks are running; inspect actual logs before claiming them complete. No actual model was loaded, private service deployed or real user's network tested.
+
+Still required: actual self-hosted inference under the owner's one-model/shared-lease discipline, wider helper faults/permissions, final publication and hosted gates, then full remaining PARITY and extra adversarial work before See / Spec / Send.
 
 ## Resume here
 

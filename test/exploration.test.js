@@ -83,7 +83,7 @@ test('version 9 backup restores nested branches, typed distillation and drafts i
   await a.store.distill({ explorationId: child.id, type: 'OPEN TENSION', text: 'My question remains open.' });
   const shelf = createDraftShelf({ database: a.db, localStorage: new Storage(), sessionStorage: new Storage(), locks: null });
   const draft = await shelf.save(`distill:${child.id}`, { explorationId: child.id, type: 'HYPOTHESIS', text: 'Unfinished thought.' });
-  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 16);
+  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 17);
   const b = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false });
   await b.restore(backup); await b.restore(backup); const restored = await b.read();
   assert.deepEqual(restored.explorations, (await a.store.read()).explorations); assert.deepEqual(restored.distillations, (await a.store.read()).distillations);

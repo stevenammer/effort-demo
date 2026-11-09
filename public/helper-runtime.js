@@ -8,10 +8,10 @@ export async function readBoundedJSON(response,max=64000) {
   const reader=response.body?.getReader();if(!reader)throw Error('Companion response has no readable body.');let count=0,raw='';const decoder=new TextDecoder('utf-8',{fatal:true});
   try{for(;;){const {done,value}=await reader.read();if(done)break;count+=value.byteLength;if(count>max)throw Error('Companion response exceeded the allowed size.');raw+=decoder.decode(value,{stream:true});}raw+=decoder.decode();const parsed=JSON.parse(raw);if(failed){const detail=exactKeys(parsed,['error'])&&typeof parsed.error==='string'&&parsed.error.length<=500?`: ${parsed.error}`:'';throw Error(`Companion returned HTTP ${response.status}${detail}.`);}return parsed;}catch(error){await reader.cancel().catch(()=>{});throw error;}finally{reader.releaseLock();}
 }
-function headers(token){if(typeof token!=='string'||!/^[A-Za-z0-9_-]{24,128}$/.test(token))throw Error('Enter the companion session token. It is kept only in this tab.');return {'Content-Type':'application/json','Authorization':`Bearer ${token}`};}
+function headers(token){if(typeof token!=='string'||!/^[A-Za-z0-9_-]{24,128}$/.test(token))throw Error('Enter the companion session token. Remembering it in this browser is an explicit option.');return {'Content-Type':'application/json','Authorization':`Bearer ${token}`};}
 const options=()=>({credentials:'omit',redirect:'error',cache:'no-store',referrerPolicy:'no-referrer'});
 export async function checkCompanion(url,token,{fetchImpl=globalThis.fetch,signal}={}) {
-  const origin=companionURL(url);if(!origin)throw Error('Use the loopback companion URL, including its port.');
+  const origin=companionURL(url);if(!origin)throw Error('Use an HTTPS companion origin or an HTTP loopback address with a port.');
   const status=await readBoundedJSON(await fetchImpl(`${origin}/status`,{...options(),headers:headers(token),signal:signal??AbortSignal.timeout(5000)}));
   if(!exactKeys(status,['protocol','route','available','at'])||!['effort-helper-v1','effort-helper-v2'].includes(status.protocol)||!validReviewRoute(status.route)||!status.route||status.route.companion!==origin||status.available!==true||!validDate(status.at))throw Error('The companion has not verified its configured model.');return status;
 }

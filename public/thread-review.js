@@ -7,7 +7,7 @@ import { THREAD_RESULTS, HELPER_ROLES, sourceOrigin, validSourceOrigin, validate
 export { THREAD_RESULTS, HELPER_ROLES } from './helper-contract.js';
 export const REVIEW_LIMITS = Object.freeze({reviews:1000, events:10000, bytes:8*1024*1024, context:12, text:4000, contextBytes:24000});
 export function companionURL(value) {
-  try { const u=new URL(value); return u.protocol==='http:' && ['127.0.0.1','localhost'].includes(u.hostname) && u.port && !u.username && !u.password && !u.search && !u.hash && u.pathname==='/' ? u.origin : null; } catch { return null; }
+  try { const u=new URL(value); return value.length<=512 && !u.username && !u.password && !u.search && !u.hash && u.pathname==='/' && (u.protocol==='https:' || u.protocol==='http:' && ['127.0.0.1','localhost'].includes(u.hostname) && u.port) ? u.origin : null; } catch { return null; }
 }
 export function privateBackendURL(value) {
   try {
@@ -18,7 +18,7 @@ export function privateBackendURL(value) {
   }catch{return null;}
 }
 export function validReviewRoute(route) {
-  return route===null || exactKeys(route,['companion','backend','model']) && companionURL(route.companion)===route.companion && privateBackendURL(route.backend)===route.backend && typeof route.model==='string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(route.model) && !/(?:^|[-/:])cloud(?:$|[-/:])/i.test(route.model);
+  return route===null || exactKeys(route,['companion','backend','model']) && typeof route.companion==='string' && typeof route.backend==='string' && companionURL(route.companion)===route.companion && privateBackendURL(route.backend)===route.backend && typeof route.model==='string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(route.model) && !/(?:^|[-/:])cloud(?:$|[-/:])/i.test(route.model);
 }
 const meta=(tx,key)=>request(tx.objectStore('meta').get(key)).then(r=>r?.value);
 const size=value=>new TextEncoder().encode(JSON.stringify(value)).length;

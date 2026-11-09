@@ -45,7 +45,7 @@ test('portable restore preserves every source revision and semantic retry identi
   const x=await setup(),target=createStore({indexedDB:new IDBFactory(),legacyStorage:null,broadcast:false});try{
     const saved=await x.store.reviseSource(x.input('edit','Portable correction.')),backup=await x.store.exportData();
     await target.restore(backup);await target.restore(backup);const again=await target.reviseSource(x.input('edit','Portable correction.'));assert.deepEqual(again,saved);
-    const state=await target.read();assert.equal(state.version,16);assert.deepEqual(state.sourceRevisions,[saved]);
+    const state=await target.read();assert.equal(state.version,17);assert.deepEqual(state.sourceRevisions,[saved]);
     const old=structuredClone(JSON.parse(backup).payload);old.version=11;delete old.threadReviews;delete old.helperEvents;delete old.sourceRevisions;await target.restore(JSON.stringify({payload:old,sha256:await sha256(JSON.stringify(old))}));assert.deepEqual((await target.read()).sourceRevisions,[saved]);
   }finally{await target.close();await x.close();}
 });
