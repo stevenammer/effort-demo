@@ -1,3 +1,4 @@
+import { validateRevisionProposal } from './revision-proposals.js';
 import { moveSnapshotShape, validMoveSnapshot, validateThinkingState } from './thinking.js';
 import { request } from './database.js';
 import { exactKeys, validId, validDate, validHash, sha256, stableId, same, IntegrityError } from './primitives.js';
@@ -66,7 +67,9 @@ export async function validateExplorationState(state) {
 }
 
 // A missing derivation is tolerated only when its raw record was preserved for recovery.
-export function validateProposalProvenance(capture, { captures, explorations, distillations, recovery }) {
+export function validateProposalProvenance(capture, state) {
+  if (capture.sourceRevisionId !== undefined) return validateRevisionProposal(capture,state);
+  const { captures, explorations, distillations, recovery } = state;
   if (capture.derivedFromId === undefined) return null;
   const recorded = () => recovery.some(row => row.source === 'derivation' && row.recordId === capture.id && row.raw === JSON.stringify(capture));
   const fail = message => { if (recorded()) return 'recovery'; throw new IntegrityError(message); };

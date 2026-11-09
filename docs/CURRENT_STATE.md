@@ -100,6 +100,12 @@ GitHub checks **42569726695** and Pages **42569726245** succeeded. Hosted source
 
 Next: prepare exact corrected-source proposals with stable revision ID/hash provenance, then make choosing an exact proposal quote a second explicit action. Never reuse corrected offsets against the original. Extending strict capture metadata requires a schema fence so older clients cannot quarantine the new record shape. Provider/voice provenance and the full native map remain open; this release doesn't establish a complete port.
 
+## Active continuation: exact revision proposals
+
+Current branch **feature/revision-proposals-20261109** is based on published7f1587a. Exact correction/transcript proposals now carry canonical revision ID/hash lineage and a sealed immutable reply, with a second explicit quote choice. History pagination exposes older exact revisions. Schema11/backup13 imports1..12, fencing older strict capture readers. See REVISION_PROPOSALS.md.
+
+Parent234/234 tests and the new browser suite at1440/390/320 pass, including distinct transcript provenance, old-history preparation, idempotent retry, unchanged NOW after new edits, honest damaged provenance, backup/restore/offline and asynchronous navigation/reset cases. Broader regressions, actual published-client update, fresh checkout, publication and hosted gates remain. Nothing from this continuation is published yet. Neutral THREAD review and bounded assistance remain next in the full native map; See / Spec / Send stays after complete EFFORT parity and red-teaming.
+
 ## Resume here
 
 1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.

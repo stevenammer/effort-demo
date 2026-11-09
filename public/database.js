@@ -1,5 +1,5 @@
 export const DB_NAME = 'effort-public-demo';
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 export const TABLES = Object.freeze(['captures', 'meta', 'quarantine', 'drafts', 'spans', 'intentEvents', 'places', 'resumptions', 'explorations', 'distillations', 'artifacts', 'branchEvents', 'moveEvents', 'openedReceipts', 'personEvents', 'contactReceipts', 'sourceRevisions']);
 
 export function request(req) {

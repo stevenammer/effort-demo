@@ -1,3 +1,4 @@
+import { createRevisionProposals } from './revision-proposals.js';
 import { createRevisions, validateRevisionState, REVISION_TABLE } from './revisions.js';
 import { createPeople, validatePeopleState, PEOPLE_TABLES } from './people.js';
 import { createOpened, validateOpenedState, sameOpenedSource, OPENED_TABLE } from './opened.js';
@@ -197,7 +198,7 @@ export function createStore(options = {}) {
   async function read({ includeDrafts = true, requireArtifacts = false, requireThinking = false, requireOpened = false, requirePeople = false, requireRevisions = false, integrityRetry = false } = {}) {
     await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); await recoverProposalProvenance();
     let fileError, thinkingError, openedError, peopleError, revisionError;
-    try { await revisions.repair(); } catch (error) { revisionError = error; }
+    try { await revisions.repair(); await revisionProposals.repair(); } catch (error) { revisionError = error; }
     try { await people.repair(); } catch (error) { peopleError = error; }
     try { await opened.repair(); } catch (error) { openedError = error; }
     try { await thinking.repair(); } catch (error) { thinkingError = error; }
@@ -223,6 +224,7 @@ export function createStore(options = {}) {
           fileError ??= unavailable; thinkingError ??= unavailable; openedError ??= unavailable; peopleError ??= unavailable; revisionError ??= unavailable; continue;
         }
         throw error; }
+      if (revisionError) complete.revisionWarning = `Source revision history is unavailable: ${revisionError.message}`;
       try {
         for (const capture of complete.captures) await validateCapture(capture);
         if (new Set(complete.captures.map(c => c.id)).size !== complete.captures.length || complete.spans.some(span => !validSpan(span)) || complete.captures.some(c => !complete.spans.some(span => span.id === spanKey(c.span)))) throw new IntegrityError('The source directory could not be verified.');
@@ -452,10 +454,11 @@ export function createStore(options = {}) {
   const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
   const exploration = createExploration({ db, ready, notify, recoveryRecord, ensureCapacity });
   const artifacts = createArtifacts({ db, ready, notify, recoveryRecord });
+  const revisionProposals = createRevisionProposals({ db, ready, notify, recoveryRecord, ensureCapacity });
   const revisions = createRevisions({ db, ready, notify, recoveryRecord });
   const people = createPeople({ db, ready, notify, recoveryRecord });
   const opened = createOpened({ db, ready, notify, recoveryRecord });
   const thinking = createThinking({ db, ready, notify, recoveryRecord });
-  return { ...continuity, reviseSource: revisions.revise, savePerson: people.savePerson, logContact: people.logContact, markOpened: opened.markOpened, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
+  return { ...continuity, prepareRevisionProposal: revisionProposals.prepare, reviseSource: revisions.revise, savePerson: people.savePerson, logContact: people.logContact, markOpened: opened.markOpened, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

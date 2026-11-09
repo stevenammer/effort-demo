@@ -39,7 +39,8 @@ let navigationVersion = 0, explorationNavigation = 0, explorationRoute = 'home';
 let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
 let moveEditing = null, moveEpoch, moveSaving = false, moveLoading = false, branchEditing = null, branchEpoch, branchSaving = false, branchLoading = false;
 let branchSelection = null, branchFocusPending = false;
-const proposalPending = new Set();
+const proposalPending = new Set(), revisionPreparationPending = new Set();
+const revisionPreparationKey = (id,hash) => `${id}:${hash}`;
 let threadOpeningPending = false, openingViewToken = 0, renderedOpening = null;
 const openingPending = new Map(), openingErrors = new Map();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
@@ -493,7 +494,28 @@ async function considerProposal(distillationId) {
   } catch (error) { if (generation === epoch) fail(error); }
   finally { proposalPending.delete(distillationId); if (state) renderThread(); }
 }
+async function considerRevisionProposal({revisionId,revisionHash}) {
+  const key=revisionPreparationKey(revisionId,revisionHash);if(revisionPreparationPending.has(key)||resetting||!storageHealthy)return;
+  const expectedEpoch=workspaceEpoch,generation=epoch,route=routeFromHash(),navigation=navigationVersion,originSource=$('source-dialog').open?sourceId:null;
+  revisionPreparationPending.add(key);revisionsUI.update();
+  try{
+    const proposal=await store.prepareRevisionProposal({revisionId,revisionHash},{expectedEpoch});await refreshed();
+    if(generation!==epoch||workspaceEpoch!==expectedEpoch)return;
+    const sameReading=originSource?$('source-dialog').open&&sourceId===originSource:!document.querySelector('dialog[open]');
+    if(navigationVersion===navigation&&routeFromHash()===route&&sameReading){if($('source-dialog').open)$('source-dialog').close();openSource(proposal.id,false);}
+    notice('Exact revision prepared as a separate proposal. NOW is unchanged. Choosing a detail is a second action.');
+  }catch(error){if(generation===epoch)fail(error);}finally{revisionPreparationPending.delete(key);revisionsUI.update();}
+}
+function revisionProposalProvenance(capture) {
+  const box=element('aside',undefined,'proposal-provenance revision-proposal-provenance');let status;try{status=validateProposalProvenance(capture,state);}catch{status='recovery';}
+  if(status!=='verified'){box.append(element('p','Revision proposal source links need recovery. Its exact writing is kept.','small'));const recover=element('button','Inspect source recovery','text-button');recover.onclick=()=>{if($('source-dialog').open)$('source-dialog').close();showView('engine');};box.append(recover);return box;}
+  const revision=state.sourceRevisions.find(row=>row.id===capture.sourceRevisionId),original=state.captures.find(row=>row.id===capture.parentId);
+  box.append(element('p',revision.kind==='edit'?'Prepared from an exact saved correction. Source links verified.':'Prepared from an exact supplied transcript. Source links verified; audio is not verified.','small'));
+  const lineage=element('details',undefined,'proposal-lineage');lineage.append(element('summary','Read exact revision lineage'),element('p','Preparation preserved this saved revision, not a later edit. Checksums verify bytes and links, not authorship, factual truth or completed work.','small'),element('p',`Revision ${revision.id} · ${new Date(revision.at).toLocaleString()} · SHA-256 ${revision.hash}`,'small file-checksum'),element('h4',revision.kind==='edit'?'Saved correction':'Supplied transcript text'),element('pre',revision.text,'raw'),element('h4','Original source'),element('pre',original.text,'raw'));
+  const download=element('button','Download exact revision record','text-button');download.onclick=()=>downloadText(JSON.stringify(revision,null,2),`effort-revision-${revision.id}.json`);const source=element('button','Open original source thread','text-button');source.onclick=()=>{if($('source-dialog').open)$('source-dialog').close();openThread(original.id);};lineage.append(download,source);box.append(lineage);return box;
+}
 function proposalProvenance(capture) {
+  if (capture.sourceRevisionId) return revisionProposalProvenance(capture);
   if (!capture.derivedFromId) return null;
   const box = element('aside', undefined, 'proposal-provenance'); let status;
   try { status = validateProposalProvenance(capture, state); } catch { status = 'recovery'; }
@@ -876,7 +898,7 @@ async function replaceDemo(samples) {
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
     ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
-    peopleUI?.reset(); revisionsUI?.reset(); personSelection = null;
+    peopleUI?.reset(); revisionsUI?.reset(); revisionPreparationPending.clear(); personSelection = null;
     artifactTarget = null; artifactSelection = null; branchSelection = null; moveEditing = null; branchEditing = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
@@ -923,7 +945,7 @@ function recoverLegacyCapture() {
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
 }
 peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
-revisionsUI = createRevisionsUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,refreshed,element,organized,downloadText,notice,onSaved:id=>{if(currentView==='fort')archiveUI.refresh(id);}});
+revisionsUI = createRevisionsUI({prepareProposal:considerRevisionProposal,isPreparing:(id,hash)=>revisionPreparationPending.has(revisionPreparationKey(id,hash)),getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,refreshed,element,organized,downloadText,notice,onSaved:id=>{if(currentView==='fort')archiveUI.refresh(id);}});
 $('revision-directory').addEventListener('toggle',async()=>{if(!$('revision-directory').open)return;try{await refreshed();if($('revision-directory').open)revisionsUI.directory();}catch(error){fail(error);}});
 archiveUI = createArchiveUI({refreshState:refreshed,onError:fail,getRevisionUI:()=>revisionsUI,getState:()=>state,getEpoch:()=>workspaceEpoch,element,organized,openSource,openThread,downloadText,getEF:()=>efOn,setEF});
 try {
@@ -950,7 +972,7 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || revisionsUI?.busy() || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
+  if (booting || revisionPreparationPending.size || revisionsUI?.busy() || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
   if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {

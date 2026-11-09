@@ -24,7 +24,7 @@ test('version 7 backups migrate without files and never remove files from the cu
   const file = await store.attach({ captureId: payload.captures[0].id, name: 'retained.txt', mime: 'text/plain', bytes: new TextEncoder().encode('Keep this file across an older restore.') });
   await store.restore(raw); assert.deepEqual((await store.read()).artifacts, [file]);
   const fresh = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }); await fresh.restore(raw);
-  const upgraded = await fresh.read(); assert.equal(upgraded.version, 12); assert.deepEqual(upgraded.artifacts, []); assert.deepEqual(upgraded.captures, (await store.read()).captures);
+  const upgraded = await fresh.read(); assert.equal(upgraded.version, 13); assert.deepEqual(upgraded.artifacts, []); assert.deepEqual(upgraded.captures, (await store.read()).captures);
   await fresh.close(); await store.close();
 });
 
