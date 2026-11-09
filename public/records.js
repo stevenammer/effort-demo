@@ -21,12 +21,12 @@ export function textAllowed(text) {
 }
 export async function validateCapture(c) {
   if (!(exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample']) || exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample', 'parentId']) || exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample', 'parentId', 'derivedFromId', 'derivedHash']) || exactKeys(c, ['id', 'text', 'hash', 'createdAt', 'span', 'sample', 'parentId', 'sourceRevisionId', 'sourceRevisionHash', 'derivedHash'])) || !validId(c.id) || !textAllowed(c.text) ||
-      !validHash(c.hash) || !validSpanName(c.span) || (c.parentId !== undefined && (!validId(c.parentId) || c.parentId === c.id)) || (c.derivedFromId !== undefined && (!validId(c.derivedFromId) || !validId(c.parentId) || c.sample !== false)) || typeof c.sample !== 'boolean' || !validDate(c.createdAt)) {
+      !validHash(c.hash) || !validSpanName(c.span) || (Object.hasOwn(c, 'parentId') && (!validId(c.parentId) || c.parentId === c.id)) || (Object.hasOwn(c, 'derivedFromId') && (!validId(c.derivedFromId) || !validId(c.parentId) || c.sample !== false)) || typeof c.sample !== 'boolean' || !validDate(c.createdAt)) {
     throw new IntegrityError('The saved record has an invalid capture format.');
   }
   if (await sha256(c.text) !== c.hash) throw new IntegrityError('The original text could not be verified.');
-  if (c.sourceRevisionId !== undefined && (!validId(c.sourceRevisionId) || !validHash(c.sourceRevisionHash) || !validId(c.parentId) || c.sample !== false || await revisionProposalId(c.sourceRevisionId,c.sourceRevisionHash) !== c.id)) throw new IntegrityError('The exact revision proposal identity could not be verified.');
-  if ((c.derivedFromId || c.sourceRevisionId) && (!validHash(c.derivedHash) || await sha256(JSON.stringify(Object.fromEntries(Object.entries(c).filter(([key]) => key !== 'derivedHash')))) !== c.derivedHash)) throw new IntegrityError('The proposal metadata could not be verified.');
+  if (Object.hasOwn(c, 'sourceRevisionId') && (!validId(c.sourceRevisionId) || !validHash(c.sourceRevisionHash) || !validId(c.parentId) || c.sample !== false || await revisionProposalId(c.sourceRevisionId,c.sourceRevisionHash) !== c.id)) throw new IntegrityError('The exact revision proposal identity could not be verified.');
+  if ((Object.hasOwn(c, 'derivedFromId') || Object.hasOwn(c, 'sourceRevisionId')) && (!validHash(c.derivedHash) || await sha256(JSON.stringify(Object.fromEntries(Object.entries(c).filter(([key]) => key !== 'derivedHash')))) !== c.derivedHash)) throw new IntegrityError('The proposal metadata could not be verified.');
   return c;
 }
 export async function recoveryRecord(source, recordId, raw, reason) {

@@ -42,3 +42,13 @@ test('supplied transcript proposals preserve their distinct exact source even wh
 test('proposal capacity refusal preserves all existing originals and revision writing without truncation',async()=>{
  const x=await setup();try{await x.raw.run(['captures'],'readwrite',async tx=>{const table=tx.objectStore('captures'),rows=await request(table.getAll());for(let n=rows.length;n<1000;n++)await request(table.add({...x.source,id:crypto.randomUUID()}));});const before=await x.store.exportData();await assert.rejects(x.store.prepareRevisionProposal(x.input),/capture limit/);assert.equal(await x.store.exportData(),before);}finally{await x.raw.close();await x.close();}
 });
+
+test('structured storage cannot disguise missing provenance as an ordinary capture with undefined fields',async()=>{
+ const x=await setup();try{const p=await x.store.prepareRevisionProposal(x.input);
+  await assert.rejects(checkCapture({...p,sourceRevisionId:undefined}),/proposal identity/);
+  await assert.rejects(checkCapture({...x.source,parentId:undefined}),/capture format/);
+  await assert.rejects(checkCapture({id:crypto.randomUUID(),text:p.text,hash:p.hash,createdAt:p.createdAt,span:p.span,sample:false,parentId:x.source.id,derivedFromId:undefined,derivedHash:'0'.repeat(64)}),/capture format/);
+  await x.store.choose(p.id,0,p.text.length);await x.raw.run(['captures'],'readwrite',tx=>request(tx.objectStore('captures').put({...p,sourceRevisionId:undefined})));
+  const st=await x.store.read();assert.ok(!st.captures.some(c=>c.id===p.id));assert.ok(st.recovery.some(r=>r.source==='capture'&&r.recordId===p.id&&r.raw.includes(p.text.slice(2,10))));assert.equal((await x.store.health()).heldNow,true);
+ }finally{await x.raw.close();await x.close();}
+});
