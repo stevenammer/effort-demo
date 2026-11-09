@@ -6,7 +6,7 @@ Opening a thread records only the original and replies displayed for that openin
 
 Receipts refer to exact capture IDs and text hashes. There is no last-read timestamp cutoff, so a late or backdated reply stays separate. The time in a receipt describes the opening; it never decides which other writing was seen. Branches, files and distillations retain their existing separate histories; these counts cover source posts and replies only.
 
-Each source has one portable, sealed opening receipt. Concurrent tabs reuse the canonical row. An accepted write with failed readback offers an explicit verification retry. Changed sources and workspace resets fence stale operations. Reading a thread doesn't alter originals, choices or commitments.
+Each source has one portable, sealed opening receipt. Concurrent tabs reuse the canonical row. An accepted write with failed readback offers an explicit verification retry. Changed sources and workspace resets fence stale operations. Reading a thread doesn't alter originals, choices or commitments. Opening-status-only refreshes patch their labels without rebuilding the thread or original dialog, preserving open disclosures and downloads while acknowledgement settles.
 
 IndexedDB schema 8 adds `openedReceipts`. Backup10 accepts backups1 through9 and carries the receipts. Restoring an older backup doesn't erase existing opening history or acknowledge writing it didn't contain. Independently recorded opening times for the same exact source merge without replacing an existing receipt. Conflicting records refuse atomically; restoration reads back its opening receipts before reporting success.
 

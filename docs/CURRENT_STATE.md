@@ -4,7 +4,7 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-Published `main` release is **2f0bbc4b5b0055e339c26e86775460d554b89002** (opening-context implementation5260d90). Exact-source opening context joins the released thinking, connected-file and proposal flows. The checkout is on `main`; the feature branches retain implementation history. Inspect actual Git state and this checkpoint before resuming.
+Published `main` runtime is **a0cda80710f0ae7c108633652e7494ff46a29656** (opening-context implementation5260d90, reading-continuity fix bd0115e). Exact-source opening context joins the released thinking, connected-file and proposal flows. The checkout is on `main`; the feature branches retain implementation history. Inspect actual Git state and this checkpoint before resuming.
 
 The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
@@ -66,7 +66,7 @@ Local core, thinking, proposal, file, exploration, draft and composer browser re
 
 ### Reading continuity follow-up
 
-A post-release hosted core smoke check exposed a redraw race: opening-status acknowledgement could rebuild the thread/source dialog while the person was opening or downloading the original. Follow-up bd0115e patches only opening summaries and badges when writing hasn't changed, preserving the reading DOM and disclosures. The full165-test suite and a fresh-checkout offline install/165/syntax/publication guard pass. Core smoke selection also now waits for the matching saved capture rather than assuming the first recent card is already refreshed. Targeted browser acceptance holds an acknowledgement pending, opens/downloads the original, then checks disclosure and source-dialog DOM preservation. Local core, held-acknowledgement reading, thinking, composer and offline/update browser checks pass after the fix. Republish and verify the follow-up before the People slice.
+A post-release hosted core smoke check exposed a redraw race: opening-status acknowledgement could rebuild the thread/source dialog while the person was opening or downloading the original. Follow-up bd0115e patches only opening summaries and badges when writing hasn't changed, preserving the reading DOM and disclosures. The full165-test suite and a fresh-checkout offline install/165/syntax/publication guard pass. Core smoke selection also now waits for the matching saved capture rather than assuming the first recent card is already refreshed. Targeted browser acceptance holds an acknowledgement pending, opens/downloads the original, then checks disclosure and source-dialog DOM preservation. Local core, held-acknowledgement reading, thinking, composer and offline/update browser checks pass after the fix. The fix is published in a0cda80. Checks42549525503 and Pages42549525098 passed. Hosted held-acknowledgement acceptance passes at1440/390/320 with no page errors or external requests, including exact downloads and preserved disclosure/dialog DOM. The hosted manifest matches the fixed runtime (SHA-256 8ba3d58523e9737569f4c9b64a50efd18b3590ea42d5f37a9e3fc2cc51168e2a). The final hosted core smoke check is in progress.
 
 ## Resume here
 
