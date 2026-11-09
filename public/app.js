@@ -35,6 +35,7 @@ function renderCapturePreview() {
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let shelf, workspaceEpoch, fenced = false, resetting = false;
 let artifactTarget = null, artifactEpoch, artifactSaving = false, artifactSelection = null, artifactFocusPending = false;
+let navigationVersion = 0, explorationNavigation = 0, explorationRoute = 'home';
 let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
 let moveEditing = null, moveEpoch, moveSaving = false, moveLoading = false, branchEditing = null, branchEpoch, branchSaving = false, branchLoading = false;
 let branchSelection = null, branchFocusPending = false;
@@ -76,6 +77,7 @@ function notice(text, error = false) { $('notice').textContent = text; $('notice
 function fail(error) { notice(error.message || 'That did not finish. Your original text has not been removed.', true); }
 function formatDate(date) { return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(date)); }
 function showView(route, focus = true) {
+  navigationVersion++;
   const [base, encoded] = route.split('/');
   personSelection = base === 'person' ? encoded : null;
   artifactSelection = base === 'artifact' ? encoded : null; artifactFocusPending = !!artifactSelection;
@@ -510,11 +512,12 @@ async function openExplore(sourceId, parent = null) {
   if (explorationSaving || explorationLoading || resetting) return;
   explorationLoading = true;
   const source = state.captures.find(c => c.id === sourceId); if (!source) { explorationLoading = false; return; }
+  explorationNavigation = navigationVersion; explorationRoute = routeFromHash();
   updateExplorationControls();
   const returnData = { route: routeFromHash(), context: { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false }, expected: structuredClone(state.now), summary: displayTitle(source.text, 300) };
   explorationDraft = { sourceId, parentId: parent?.id ?? null, returnPointId: parent?.returnPointId ?? null, returnData, move: null };
   $('explore-current-place').disabled = true; $('explore-text').disabled = $('explore-dial').disabled = $('explore-move').disabled = true; $('save-exploration').disabled = true;
-  setValue('explore-text', ''); $('explore-dial').value = parent?.dial ?? 'NORMAL'; status('explore-error', ''); $('explore-dialog').showModal();
+  setValue('explore-text', ''); $('explore-dial').value = parent?.dial ?? 'NORMAL'; status('explore-error', ''); $('explore-dialog').returnValue = ''; $('explore-dialog').showModal();
   try {
     const saved = await loadContext(`explore:${sourceId}`);
     if (saved?.body.text) { const { text, dial, ...context } = saved.body; explorationDraft = context; setValue('explore-text', text); $('explore-dial').value = dial; status('explore-error', 'Unfinished branch restored with its original parent and return context.'); }
@@ -541,7 +544,7 @@ for (const [kind, textId, selectId, body] of [['explore', 'explore-text', 'explo
 }
 $('explore-form').onsubmit = async event => {
   event.preventDefault(); if (!explorationDraft || explorationSaving || explorationLoading || resetting) return;
-  explorationSaving = true; updateExplorationControls(); const body = exploreBody(), context = `explore:${body.sourceId}`, generation = epoch, expectedEpoch = workspaceEpoch;
+  explorationSaving = true; updateExplorationControls(); const body = exploreBody(), context = `explore:${body.sourceId}`, generation = epoch, expectedEpoch = workspaceEpoch, originNavigation = explorationNavigation, originRoute = explorationRoute;
   for (const id of ['explore-text', 'explore-dial', 'explore-move', 'explore-current-place', 'save-exploration']) $(id).disabled = true;
   try {
     await saveDraft(context, body, 'explore-error', true);
@@ -552,9 +555,10 @@ $('explore-form').onsubmit = async event => {
     const record = await store.explore({ sourceId: body.sourceId, parentId: body.parentId, returnPointId, text: body.text, dial: body.dial, move: body.move }, { requestId: requestId(context, body), expectedEpoch });
     if (generation !== epoch) return;
     notice('Branch kept. Your chosen NOW is unchanged.');
-    try { await clearDraft(context, body); releaseRequest(context); releaseRequest(`${context}:return`); if (JSON.stringify(exploreBody()) === JSON.stringify(body)) { setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; } }
-    catch (e) { cleanupOffer(context, body, 'explore-error', 'Branch kept.', () => { releaseRequest(context); releaseRequest(`${context}:return`); setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; }, () => !!explorationDraft && JSON.stringify(exploreBody()) === JSON.stringify(body)); }
-    await refreshed(); openThread(record.sourceId); $(`branch-${record.id}`)?.scrollIntoView({ block: 'center' });
+    try { await clearDraft(context, body); releaseRequest(context); releaseRequest(`${context}:return`); if (JSON.stringify(exploreBody()) === JSON.stringify(body)) { setValue('explore-text', ''); $('explore-dialog').close('saved'); explorationDraft = null; } }
+    catch (e) { cleanupOffer(context, body, 'explore-error', 'Branch kept.', () => { releaseRequest(context); releaseRequest(`${context}:return`); setValue('explore-text', ''); $('explore-dialog').close('saved'); explorationDraft = null; }, () => !!explorationDraft && JSON.stringify(exploreBody()) === JSON.stringify(body)); }
+    await refreshed();
+    if (navigationVersion === originNavigation && routeFromHash() === originRoute && $('explore-dialog').returnValue === 'saved' && !document.querySelector('dialog[open]')) { openThread(record.sourceId); $(`branch-${record.id}`)?.scrollIntoView({ block: 'center' }); }
   } catch (e) { status('explore-error', `${e.message} Your writing is still here.`); }
   finally { explorationSaving = false; updateExplorationControls(); for (const id of ['explore-text', 'explore-dial', 'explore-move', 'explore-current-place', 'save-exploration']) $(id).disabled = false; }
 };
