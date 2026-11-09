@@ -40,3 +40,8 @@ test('source-linked thought and file routes are local links while malformed rout
 test('credential-bearing and invalid HTTP references remain literal rather than silently losing their destination',()=>{
   for(const source of ['[credential URL](https://user:password@example.invalid/private)','https://user:password@example.invalid/private','[invalid](https://)']){assert.equal(inline(source).some(t=>t.type==='link'),false);assert.equal(textOf(inline(source)),source);}
 });
+
+
+test('unrecognized case-variant local routes keep their full source text instead of losing a destination',()=>{
+  const source='[Reference](#PERSON/12345678-1234-4123-8123-123456789abc)';assert.equal(readingLink('#PERSON/12345678-1234-4123-8123-123456789abc'),null);assert.equal(inline(source).some(t=>t.type==='link'),false);assert.equal(textOf(inline(source)),source);
+});

@@ -11,7 +11,7 @@ const HEADING = /^(#{1,6})\s+(.+)$/;
 
 function safeUrl(value) {
   const url = String(value || '').trim();
-  if (LOCAL_URL.test(url)) return url;
+  if (LOCAL_URL.test(url) && /^#(?:thread|artifact|branch|person)\//.test(url)) return url;
   if (!SAFE_URL.test(url)) return null;
   try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && parsed.hostname && !parsed.username && !parsed.password ? url : null; } catch { return null; }
 }

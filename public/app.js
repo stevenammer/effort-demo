@@ -95,13 +95,18 @@ function entryCard(capture) {
   card.append(element('p', `${formatDate(capture.createdAt)} · Original verified`));
   const open = element('button', 'Open the thought ↗', 'entry-open'); open.onclick = () => openSource(capture.id, false); card.append(open); return card;
 }
+function updateExplorationControls() {
+  $('now-explore').disabled = explorationSaving || explorationLoading || resetting;
+  for (const button of document.querySelectorAll('[data-open-exploration]')) button.disabled = explorationSaving || explorationLoading || resetting;
+  for (const button of document.querySelectorAll('[data-open-distillation]')) button.disabled = distillationSaving || distillationLoading || resetting;
+}
 function render() {
   const now = state.now;
   $('now-title').textContent = now ? readablePreview(now.quote, 4000) : 'Nothing chosen. Room to think.';
   $('now-origin').textContent = now ? now.origin === 'sample' ? 'Sample choice' : 'Chosen here' : 'No next step';
   $('now-reason').textContent = now ? 'One chosen detail. Capturing or exploring something else leaves it here.' : 'Capture freely. A thought only becomes your next step when you choose it.';
   $('now-done').hidden = $('now-original').hidden = $('hold-open').hidden = $('now-explore').hidden = !now;
-  renderReturnPoint();
+  renderReturnPoint(); updateExplorationControls();
   $('recent').replaceChildren(...state.captures.filter(c => !parentOf(c)).slice(-2).reverse().map(entryCard));
   if (!state.captures.length) $('recent').append(element('p', 'Nothing here yet. Capture a fictional thought to try the loop.', 'empty'));
   $('storage-count').textContent = `${state.captures.length} saved original${state.captures.length === 1 ? '' : 's'}`;
@@ -216,7 +221,7 @@ function renderThread() {
   const choose = element('button', 'Choose a next step…', 'quiet'); choose.onclick = () => openSource(root.id, false);
   const reply = element('button', 'Reply', 'quiet'); reply.onclick = () => targetReply(root.id);
   const hold = element('button', 'Hold my place…', 'text-button'); hold.onclick = openHold;
-  const explore = element('button', 'Explore safely…', 'text-button'); explore.onclick = () => openExplore(root.id);
+  const explore = element('button', 'Explore safely…', 'text-button'); explore.dataset.openExploration = 'true'; explore.disabled = explorationSaving || explorationLoading || resetting; explore.onclick = () => openExplore(root.id);
   actions.append(reply, choose, hold, explore, attachButton(root)); main.append(actions);
   const children = new Map();
   for (const capture of state.captures) if (parentOf(capture)) { const list = children.get(capture.parentId) ?? []; list.push(capture); children.set(capture.parentId, list); }
@@ -262,8 +267,8 @@ function renderExplorations(root) {
     const raw = element('details', undefined, 'original-disclosure'); raw.append(element('summary', 'Read exact branch writing'), element('pre', branch.text, 'raw'));
     const download = element('button', 'Download branch text', 'text-button'); download.onclick = () => downloadText(branch.text, `effort-branch-${branch.id}.txt`, 'text/plain'); raw.append(download); card.append(raw);
     const actions = element('div', undefined, 'post-actions');
-    const fork = element('button', 'Branch from here…', 'quiet'); fork.onclick = () => openExplore(branch.sourceId, branch);
-    const distill = element('button', 'Distill…', 'quiet'); distill.onclick = () => openDistill(branch);
+    const fork = element('button', 'Branch from here…', 'quiet'); fork.dataset.openExploration = 'true'; fork.disabled = explorationSaving || explorationLoading || resetting; fork.onclick = () => openExplore(branch.sourceId, branch);
+    const distill = element('button', 'Distill…', 'quiet'); distill.dataset.openDistillation = 'true'; distill.disabled = distillationSaving || distillationLoading || resetting; distill.onclick = () => openDistill(branch);
     const returnPoint = state.places.find(p => p.id === branch.returnPointId);
     const back = element('button', 'Return to where I was', 'text-button'); back.disabled = !returnPoint; back.onclick = () => resumeSavedPlace(returnPoint, back);
     const original = element('button', 'See original ↗', 'text-button'); original.onclick = () => openSource(branch.sourceId, true);
@@ -493,9 +498,10 @@ async function openExplore(sourceId, parent = null) {
   if (explorationSaving || explorationLoading || resetting) return;
   explorationLoading = true;
   const source = state.captures.find(c => c.id === sourceId); if (!source) { explorationLoading = false; return; }
+  updateExplorationControls();
   const returnData = { route: routeFromHash(), context: { scrollY, spanSearch: $('span-search').value, sourceExpanded: document.querySelector('#thread-post .original-disclosure')?.open ?? false }, expected: structuredClone(state.now), summary: displayTitle(source.text, 300) };
   explorationDraft = { sourceId, parentId: parent?.id ?? null, returnPointId: parent?.returnPointId ?? null, returnData, move: null };
-  $('explore-text').disabled = $('explore-dial').disabled = $('explore-move').disabled = true; $('save-exploration').disabled = true;
+  $('explore-current-place').disabled = true; $('explore-text').disabled = $('explore-dial').disabled = $('explore-move').disabled = true; $('save-exploration').disabled = true;
   setValue('explore-text', ''); $('explore-dial').value = parent?.dial ?? 'NORMAL'; status('explore-error', ''); $('explore-dialog').showModal();
   try {
     const saved = await loadContext(`explore:${sourceId}`);
@@ -504,18 +510,18 @@ async function openExplore(sourceId, parent = null) {
   const ancestor = state.explorations?.find(b => b.id === explorationDraft.parentId);
   $('explore-parent').textContent = ancestor ? `Branching from: ${displayTitle(ancestor.text, 150)}` : `From: ${displayTitle(source.text, 150)}`;
   if (explorationDraft.move === undefined) explorationDraft.move = null; populateMovePicker(); $('explore-current-place').hidden = !!explorationDraft.parentId; $('explore-move').disabled = false;
-  explorationLoading = false; $('explore-text').disabled = $('explore-dial').disabled = false; $('save-exploration').disabled = false; $('explore-text').focus();
+  explorationLoading = false; updateExplorationControls(); $('explore-current-place').disabled = false; $('explore-text').disabled = $('explore-dial').disabled = false; $('save-exploration').disabled = false; $('explore-text').focus();
 }
 async function openDistill(branch) {
   if (distillationSaving || distillationLoading || resetting) return;
-  distillationLoading = true;
+  distillationLoading = true; updateExplorationControls();
   distillationDraft = { explorationId: branch.id };
   $('distill-text').disabled = $('distill-type').disabled = true; $('save-distillation').disabled = true;
   setValue('distill-text', ''); $('distill-type').value = 'INSIGHT'; status('distill-error', ''); $('distill-dialog').showModal();
   try { const saved = await loadContext(`distill:${branch.id}`); if (saved?.body.text) { setValue('distill-text', saved.body.text); $('distill-type').value = saved.body.type; } }
   catch (e) { status('distill-error', `${e.message} Copy writing before leaving.`); }
   $('distill-source').textContent = `From your branch: ${displayTitle(branch.text, 160)}`;
-  distillationLoading = false; $('distill-text').disabled = $('distill-type').disabled = false; $('save-distillation').disabled = false; $('distill-text').focus();
+  distillationLoading = false; updateExplorationControls(); $('distill-text').disabled = $('distill-type').disabled = false; $('save-distillation').disabled = false; $('distill-text').focus();
 }
 for (const [kind, textId, selectId, body] of [['explore', 'explore-text', 'explore-dial', exploreBody], ['distill', 'distill-text', 'distill-type', distillBody]]) {
   const persist = () => { const draft = kind === 'explore' ? explorationDraft : distillationDraft; if (!draft) return; edited(textId); saveDraft(`${kind}:${kind === 'explore' ? draft.sourceId : draft.explorationId}`, body(), `${kind}-error`, true); };
@@ -523,8 +529,8 @@ for (const [kind, textId, selectId, body] of [['explore', 'explore-text', 'explo
 }
 $('explore-form').onsubmit = async event => {
   event.preventDefault(); if (!explorationDraft || explorationSaving || explorationLoading || resetting) return;
-  explorationSaving = true; const body = exploreBody(), context = `explore:${body.sourceId}`, generation = epoch, expectedEpoch = workspaceEpoch;
-  for (const id of ['explore-text', 'explore-dial', 'save-exploration']) $(id).disabled = true;
+  explorationSaving = true; updateExplorationControls(); const body = exploreBody(), context = `explore:${body.sourceId}`, generation = epoch, expectedEpoch = workspaceEpoch;
+  for (const id of ['explore-text', 'explore-dial', 'explore-move', 'explore-current-place', 'save-exploration']) $(id).disabled = true;
   try {
     await saveDraft(context, body, 'explore-error', true);
     if (generation !== epoch) throw Error('The workspace changed. Reopen the exploration.');
@@ -538,11 +544,11 @@ $('explore-form').onsubmit = async event => {
     catch (e) { cleanupOffer(context, body, 'explore-error', 'Branch kept.', () => { releaseRequest(context); releaseRequest(`${context}:return`); setValue('explore-text', ''); $('explore-dialog').close(); explorationDraft = null; }, () => !!explorationDraft && JSON.stringify(exploreBody()) === JSON.stringify(body)); }
     await refreshed(); openThread(record.sourceId); $(`branch-${record.id}`)?.scrollIntoView({ block: 'center' });
   } catch (e) { status('explore-error', `${e.message} Your writing is still here.`); }
-  finally { explorationSaving = false; for (const id of ['explore-text', 'explore-dial', 'save-exploration']) $(id).disabled = false; }
+  finally { explorationSaving = false; updateExplorationControls(); for (const id of ['explore-text', 'explore-dial', 'explore-move', 'explore-current-place', 'save-exploration']) $(id).disabled = false; }
 };
 $('distill-form').onsubmit = async event => {
   event.preventDefault(); if (!distillationDraft || distillationSaving || distillationLoading || resetting) return;
-  distillationSaving = true; const body = distillBody(), context = `distill:${body.explorationId}`, generation = epoch, expectedEpoch = workspaceEpoch;
+  distillationSaving = true; updateExplorationControls(); const body = distillBody(), context = `distill:${body.explorationId}`, generation = epoch, expectedEpoch = workspaceEpoch;
   for (const id of ['distill-text', 'distill-type', 'save-distillation']) $(id).disabled = true;
   try {
     await saveDraft(context, body, 'distill-error', true);
@@ -554,7 +560,7 @@ $('distill-form').onsubmit = async event => {
     catch (e) { cleanupOffer(context, body, 'distill-error', 'Distillation kept.', () => { releaseRequest(context); setValue('distill-text', ''); $('distill-dialog').close(); distillationDraft = null; }, () => !!distillationDraft && JSON.stringify(distillBody()) === JSON.stringify(body)); }
     await refreshed();
   } catch (e) { status('distill-error', `${e.message} Your writing is still here.`); }
-  finally { distillationSaving = false; for (const id of ['distill-text', 'distill-type', 'save-distillation']) $(id).disabled = false; }
+  finally { distillationSaving = false; updateExplorationControls(); for (const id of ['distill-text', 'distill-type', 'save-distillation']) $(id).disabled = false; }
 };
 
 function targetReply(id) { if (replyLoading) return; persistReplyDraft(); replyTarget = id; persistReplyDraft(); renderThread(); $('reply-text').focus(); $('reply-form').scrollIntoView({ block: 'center', behavior: 'auto' }); }

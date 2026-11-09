@@ -23,8 +23,11 @@ The active goal includes parity with the actual app and its intention, followed 
 | Person names weren't trimmed consistently with the actual app. | Normalize name once before sealing and retry matching; retain authored multiline context exactly. | People normalization/retry tests pass. |
 | Generic draft emptiness didn't recognize several deeper composers. | A recovery action must refuse to overwrite nonempty People, move, exploration, branch or contact drafts. | Context-aware emptiness guards and new adversarial tests pass. |
 | Failed tombstone writes could make draft cleanup permanently unretryable. | Retry only the exact failed cleanup; newer writing must remain protected. | Exact cleanup retry/newer-writing/reset tests and real browser contact-cleanup fault pass. |
-
 | Rejected credential-bearing links lost their destination in the readable view. | Rejected references stay literal and inactive; raw writing stays exact. | Parser validation, Node regression and hostile browser suite pass. |
+
+| A lost offline readiness response could leave the status stuck until another lifecycle event. | Retry status probes with a bounded limit, observe already-installing workers and never advertise unverified readiness. | Four deterministic lifecycle/retry tests and real offline/update browser regression pass. |
+| Exploration looked available before the preceding save had finished, so a fast click was ignored. | Enabled controls must reflect real save/load readiness without replacing the reading DOM. | Exploration browser regression passes after readiness controls were tied to pending state. |
+| Case-variant local-route prefixes could lose a rejected destination in the readable view. | Unsupported prefixes stay literal and inactive. | Exact parser regression passes; hostile browser recheck pending. |
 
 ## Further campaigns, still required
 

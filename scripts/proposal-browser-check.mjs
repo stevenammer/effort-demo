@@ -212,7 +212,7 @@ try {
 
   const { page, context, sourceId, proposalId, distillationId, distillationText, initialChoice, initialEvents, peer } = desktopData;
 
-  // Export v10 with proposal provenance and prepare a valid version 6 migration fixture.
+  // Export v11 with proposal provenance and prepare a valid version 6 migration fixture.
   await page.locator('[data-view="engine"]').click();
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]);
   const backup = await readFile(await download.path(), 'utf8');
@@ -238,7 +238,7 @@ try {
   await restoredReply.locator('.proposal-provenance p').getByText('Prepared from your distillation. Saved links verified.', { exact: true }).waitFor();
   assert.equal((await stateOf(page)).captures.filter(row => row.id === proposalId).length, 1);
 
-  // A clean browser upgrades a version 6 backup to version 10 without fabricating proposals.
+  // A clean browser upgrades a version 6 backup to version 11 without fabricating proposals.
   const oldContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   oldContext.setDefaultTimeout(10000); routeContext(oldContext);
   const oldPage = await oldContext.newPage(); oldPage.setDefaultTimeout(10000); oldPage.on('pageerror', error => errors.push(error.message));
@@ -311,7 +311,7 @@ try {
   await offlineContext.close();
 
   assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-  console.log('PASS: proposal preparation and explicit exact choice; sandbox refusal; exact lineage and inert text; idempotent readback retry and duplicate guard; live cross-tab state; backup v10/reset/restore and v6 upgrade; damaged distillation recovery with intact proposal; async reset fencing; offline reopen; keyboard flow; 1440px/390px/320px. No page errors or external requests.');
+  console.log('PASS: proposal preparation and explicit exact choice; sandbox refusal; exact lineage and inert text; idempotent readback retry and duplicate guard; live cross-tab state; backup v11/reset/restore and v6 upgrade; damaged distillation recovery with intact proposal; async reset fencing; offline reopen; keyboard flow; 1440px/390px/320px. No page errors or external requests.');
 } finally {
   await browser.close();
   if (server) await new Promise(resolve => server.close(resolve));

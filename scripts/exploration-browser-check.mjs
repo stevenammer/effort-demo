@@ -1,6 +1,6 @@
 // Acceptance for the bounded safe exploration slice. Uses the demo's existing Playwright install.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createDemoServer } from './serve.mjs';
 
@@ -192,9 +192,9 @@ try {
     });
     const restorePage = await restoreContext.newPage(); restorePage.on('pageerror', error => errors.push(error.message));
     restorePage.setDefaultTimeout(10000);
-    await restorePage.goto(`${base}/public/`); await restorePage.locator('[data-view="engine"]').click();
+    await restorePage.goto(`${base}/public/`); await restorePage.locator('#capture-open:enabled').waitFor(); await restorePage.locator('[data-view="engine"]').click();
     await restorePage.locator('#restore-file').setInputFiles({ name: 'exploration-backup.json', mimeType: 'application/json', buffer: Buffer.from(backup) });
-    await restorePage.getByText(/Restore verified/).waitFor();
+    try { await restorePage.getByText(/Restore verified/).waitFor(); } catch (error) { await writeFile('/tmp/effort-exploration-restore-fixture.json',backup); console.error('RESTORE DIAGNOSTIC',await restorePage.locator('#notice').textContent()); throw error; }
     await restorePage.goto(`${base}/public/#thread/${sourceId}`);
     await restorePage.locator('#thread-explorations .exploration-card').filter({ hasText: 'A nested branch, kept separate.' }).waitFor();
     await restorePage.locator('#thread-explorations .distillation-card').filter({ hasText: 'A useful open tension.' }).waitFor();
