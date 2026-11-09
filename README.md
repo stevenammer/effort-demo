@@ -86,6 +86,8 @@ PLAYWRIGHT_DIR=/path/to/playwright node scripts/thinking-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/opened-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/people-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/archive-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/revisions-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/exploration-navigation-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/redteam-reading-browser-check.mjs
 ```
 
@@ -97,7 +99,7 @@ The offline check uses actual service workers and synthetic releases on a reposi
 
 Set `DEMO_BASE_URL=https://stevenammer.github.io/effort-demo` to run the same browser acceptance against the hosted walkthrough. It uses an isolated browser context with fictional data and doesn't connect to the private app.
 
-The exploration check exercises nested branches and all four dials, self-authored distillations, the promotion boundary, exact return context, failed-write drafts, cross-tab updates, backup restore and offline reopen. The public backup is now version 11; versions 1 through 10 remain accepted. Exploration and distillation records share a 4 MiB encoded JSON budget, with 4,000 characters per note. Checksums verify stored bytes, not truth or authorship. See [the exploration contract](docs/EXPLORATION.md) for the product decisions and remaining limits.
+The exploration check exercises nested branches and all four dials, self-authored distillations, the promotion boundary, exact return context, failed-write drafts, cross-tab updates, backup restore and offline reopen. The public backup is now version 12; versions 1 through 11 remain accepted. Exploration and distillation records share a 4 MiB encoded JSON budget, with 4,000 characters per note. Checksums verify stored bytes, not truth or authorship. See [the exploration contract](docs/EXPLORATION.md) for the product decisions and remaining limits.
 
 ## Attribution
 
@@ -114,3 +116,5 @@ Attention Spans show exact posts and replies not opened here. Opening a thread a
 People keeps optional relationship context, manually selected source links, exact revision history and self-reported conversations inside its Attention Span. Contact drafts preserve timezone intent, including ambiguous DST times; editing context never logs a conversation or changes NOW. See [the People contract](docs/PEOPLE.md).
 
 FORT / EF opens the full verified original history, with literal search, stable source links and older-capture paging. EF also organizes the capture draft live; switching it off shows the exact wording. A preview failure leaves original saving available. See [the FORT and live projection contract](docs/FORT.md).
+
+Corrections and supplied transcripts append separate records. FORT can organize from them while preserving the original, earlier revisions and existing NOW. Historical search, exact downloads, stale-tab rebasing and explicit recovery are included. Supplied transcript text does not verify audio. See [the source-revision contract](docs/REVISIONS.md).
