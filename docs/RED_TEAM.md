@@ -31,6 +31,8 @@ The active goal includes parity with the actual app and its intention, followed 
 
 | Shared source ordering compared ISO strings lexically, so valid UTC offsets could reverse real chronology outside FORT. | Sort by the actual instant with stable source-ID ties, preserving the original timestamp string. | A failing storage regression reproduced the bug. The fix passes all19 storage tests, the full210-test suite and the real browser Home/FORT offset-ordering case; exact timestamps survive a backup round trip. Release follow-up gates pending. |
 
+| Activation could finish while a page was reloading, leaving a live worker but no page controller and no readiness recovery. | Adopt the page through the verified active worker with bounded attempts, observe an active worker still activating, and never reload writing or claim unverified readiness. | Reproduced in real core acceptance; two deterministic regressions failed before the fix. Seven lifecycle tests and full213 pass. Real offline acceptance disables activation-time claiming and proves message-driven adoption, one page load and exact draft survival through offline reload. |
+
 ## Further campaigns, still required
 
 The FORT slice additionally executes a real browser1,000-original fixture with50 rendered cards, refused over-capacity capture with exact draft retention, invalidated-source removal and clearing hidden archive/draft projections on reset. Exact source offsets and whole-workspace entity limits still require the wider audit.

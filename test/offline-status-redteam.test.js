@@ -56,3 +56,25 @@ test('an existing waiting worker remains explicitly applicable when registration
   const dispose=await setupOffline({status,button,serviceWorker,beforeUpdate:async()=>{approved++;return()=>{};}});
   try{assert.equal(button.hidden,false);assert.equal(approved,0);assert.deepEqual(commands,[]);await button.onclick();assert.equal(approved,1);assert.deepEqual(commands,['APPLY_UPDATE']);}finally{dispose?.();}
 });
+
+test('an activated worker can adopt a page missed during activation without reloading or a controllerchange event', async()=>{
+  const priorChannel=globalThis.MessageChannel,priorTimeout=globalThis.setTimeout;let dispose,claims=0;
+  class ReplyChannel{constructor(){this.port1={onmessage:null,close(){}};this.port2={reply:data=>this.port1.onmessage?.({data})};}}
+  const serviceWorker=new Target(),registration=new Target();serviceWorker.controller=null;registration.installing=null;registration.waiting=null;
+  registration.active=Object.assign(new Target(),{state:'activated',postMessage(message){assert.equal(message.type,'CLAIM_CLIENTS');claims++;queueMicrotask(()=>{serviceWorker.controller={postMessage(message,[port]){assert.equal(message.type,'SHELL_STATUS');queueMicrotask(()=>port.reply({ready:true}));}};});}});
+  serviceWorker.register=async()=>registration;const status={textContent:''},button={hidden:false,disabled:false};
+  try{globalThis.MessageChannel=ReplyChannel;globalThis.setTimeout=(fn,ms,...args)=>priorTimeout(fn,[250,500,750].includes(ms)?2:ms,...args);dispose=await setupOffline({status,button,serviceWorker,beforeUpdate:async()=>{throw Error('No update was requested');}});await delay(70);assert.equal(claims,1);assert.match(status.textContent,/Available offline/);}finally{dispose?.();globalThis.MessageChannel=priorChannel;globalThis.setTimeout=priorTimeout;}
+});
+
+test('an activated worker that cannot adopt a page exhausts bounded attempts without advertising readiness',async()=>{
+  const priorTimeout=globalThis.setTimeout;let dispose,claims=0;const registration=new Target(),serviceWorker=new Target();registration.installing=null;registration.waiting=null;registration.active=Object.assign(new Target(),{state:'activated',postMessage(message){assert.equal(message.type,'CLAIM_CLIENTS');claims++;}});serviceWorker.controller=null;serviceWorker.register=async()=>registration;const status={textContent:''},button={hidden:false,disabled:false};
+  try{globalThis.setTimeout=(fn,ms,...args)=>priorTimeout(fn,[250,500,750].includes(ms)?2:ms,...args);dispose=await setupOffline({status,button,serviceWorker,beforeUpdate:async()=>()=>{}});await delay(70);assert.equal(claims,3);assert.doesNotMatch(status.textContent,/Available offline/);await delay(20);assert.equal(claims,3);}finally{dispose?.();globalThis.setTimeout=priorTimeout;}
+});
+
+test('an active worker still activating when registration resolves is observed through activation',async()=>{
+  let claims=0;const active=new Target();active.state='activating';active.postMessage=message=>{assert.equal(message.type,'CLAIM_CLIENTS');claims++;};
+  const registration=new Target();registration.active=active;registration.installing=null;registration.waiting=null;
+  const serviceWorker=new Target();serviceWorker.controller=null;serviceWorker.register=async()=>registration;
+  const status={textContent:''},button={hidden:false,disabled:false};const dispose=await setupOffline({status,button,serviceWorker,beforeUpdate:async()=>()=>{}});
+  try{assert.match(status.textContent,/Preparing offline/);active.state='activated';active.emit('statechange');await delay(20);assert.equal(claims,1);assert.doesNotMatch(status.textContent,/Available offline/);}finally{dispose?.();}
+});

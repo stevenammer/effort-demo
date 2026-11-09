@@ -80,14 +80,30 @@ try{
     for (const p of persistent?.pages() ?? []) { console.error('PERSISTENT OFFLINE DIAGNOSTIC', await p.evaluate(async()=>({url:location.href,status:document.querySelector('#offline-status')?.textContent,controller:navigator.serviceWorker.controller?.scriptURL,registrations:(await navigator.serviceWorker.getRegistrations()).map(r=>({scope:r.scope,installing:r.installing?.state,waiting:r.waiting?.state,active:r.active?.state})),caches:await caches.keys()})).catch(e=>({diagnosticError:e.message}))); }
     throw error;
   } finally { await persistent?.close(); await rm(profile,{recursive:true,force:true}); }
+  // Force the activation/client race: only CLAIM_CLIENTS can adopt this first page.
+  const missedActivation=new Map(a),activateClaim='event.waitUntil(self.clients.claim());';
+  assert.ok(missedActivation.get('sw.js').toString().includes(activateClaim));
+  missedActivation.set('sw.js',Buffer.from(missedActivation.get('sw.js').toString().replace(activateClaim,'event.waitUntil(Promise.resolve());')));
+  const adoption=next(missedActivation,'missed-activation-client');files=adoption.files;
+  const adoptContext=observe(await browser.newContext());
+  try{
+    const adoptPage=await adoptContext.newPage();let loads=0;adoptPage.on('load',()=>loads++);
+    await adoptPage.goto(base+'/public/');await ready(adoptPage);await engine(adoptPage);
+    await adoptPage.locator('#capture-open').click();await adoptPage.locator('#capture-text').fill('Draft preserved while adopting the offline worker.');
+    await adoptPage.locator('#offline-status').getByText('Available offline in this browser.',{exact:false}).waitFor({state:'attached'});
+    assert.equal(await version(adoptPage),adoption.version);assert.equal(loads,1,'adopting a first page must not reload writing');
+    assert.equal(await adoptPage.locator('#capture-text').inputValue(),'Draft preserved while adopting the offline worker.');
+    await adoptPage.getByRole('button',{name:'Close capture',exact:true}).click();await adoptContext.setOffline(true);await adoptPage.reload();await ready(adoptPage);
+    await adoptPage.locator('#capture-open').click();assert.equal(await adoptPage.locator('#capture-text').inputValue(),'Draft preserved while adopting the offline worker.');
+  }finally{await adoptContext.close();}
   const initialBad=next(b.files,'initial-failure'); initialBad.files.set('public/style.css',Buffer.from('/* Incorrect but harmless synthetic style bytes. */')); files=initialBad.files;
   const firstFailure=observe(await browser.newContext());
   try {
     const firstPage=await firstFailure.newPage(); await firstPage.goto(base+'/public/'); await ready(firstPage); await engine(firstPage);
-    await firstPage.locator('#offline-status').getByText('The offline copy could not be prepared.',{exact:false}).waitFor();
+    await firstPage.locator('#offline-status').getByText('The page could not connect to its offline worker.',{exact:false}).waitFor();
     await firstPage.locator('#capture-open').click(); await firstPage.locator('#capture-text').fill('Capture despite initial offline setup failure.'); await firstPage.locator('#save-capture').click(); await firstPage.locator('#capture-dialog').waitFor({state:'hidden'});
     assert.equal(await firstPage.evaluate(async()=> (await caches.keys()).length),0);
   } finally { await firstFailure.close(); }
   assert.deepEqual(errors,[]); assert.deepEqual(outside,[]);
-  console.log('PASS: verified real worker on repository subpath, offline reload, fresh tab and full browser restart via root, disconnected capture, explicit update with draft checks, failed-check refusal, intact writing after upgrade, corrupt-release rollback and continued capture after first-install failure. No page errors or external requests.');
+  console.log('PASS: verified real worker on repository subpath, offline reload, fresh tab and full browser restart via root, disconnected capture, explicit update with draft checks, failed-check refusal, intact writing after upgrade, corrupt-release rollback, forced missed-client activation/adoption without reloading writing, and continued capture after first-install failure. No page errors or external requests.');
 }finally{await context.close();await browser.close();await new Promise(resolve=>server.close(resolve));}
