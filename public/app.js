@@ -1,3 +1,4 @@
+import { createPeopleUI } from './people-ui.js';
 import { deriveOpened } from './opened.js';
 import { deriveMoves, deriveBranchStatuses, moveSnapshot, validMoveSnapshot } from './thinking.js';
 import { artifactBytes, artifactPreview, artifactSourceStatus, ARTIFACT_LIMITS } from './artifacts.js';
@@ -18,6 +19,7 @@ const displayTitle = (text, max = 90) => {
   return titleOf(readablePreview(text, Math.max(max * 3, 360)), max) || 'Untitled thought';
 };
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
+let peopleUI, personSelection = null;
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let shelf, workspaceEpoch, fenced = false, resetting = false;
 let artifactTarget = null, artifactEpoch, artifactSaving = false, artifactSelection = null, artifactFocusPending = false;
@@ -63,12 +65,13 @@ function fail(error) { notice(error.message || 'That did not finish. Your origin
 function formatDate(date) { return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(date)); }
 function showView(route, focus = true) {
   const [base, encoded] = route.split('/');
+  personSelection = base === 'person' ? encoded : null;
   artifactSelection = base === 'artifact' ? encoded : null; artifactFocusPending = !!artifactSelection;
   branchSelection = base === 'branch' ? encoded : null; branchFocusPending = !!branchSelection;
   const selectedBranch = branchSelection && state?.explorations?.find(b => b.id === branchSelection), branchSource = selectedBranch && state?.captures.find(c => c.id === selectedBranch.sourceId);
   const selectedFile = artifactSelection && state?.artifacts?.find(a => a.id === artifactSelection), fileSource = selectedFile && state?.captures.find(c => c.id === selectedFile.captureId);
-  currentView = base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
-  try { activeSpan = (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
+  currentView = base === 'person' ? 'spans' : base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
+  try { activeSpan = base === 'person' ? spanKey('People') : (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
   const nextThread = base === 'branch' && branchSource ? branchSource.id : base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
   if (threadId !== nextThread) { renderedOpening = null; openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
@@ -78,7 +81,7 @@ function showView(route, focus = true) {
   if (location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
   if (state) { renderSpans(); renderThread(); }
   if (focus) { $('main').focus(); scrollTo(0, 0); }
-  focusArtifact(); focusBranch();
+  focusArtifact(); focusBranch(); if (personSelection) peopleUI?.focus(personSelection);
   if (base === 'branch' && !selectedBranch) notice('This branch is unavailable in the active workspace. Its raw copy may be in Engine Room recovery or a backup.', true);
   if (base === 'artifact' && !selectedFile) notice('This file is unavailable in the active workspace. Check Engine Room recovery or a backup.', true);
 }
@@ -728,6 +731,7 @@ function renderSpanDepth(span) {
     if (!completed.length) body.append(element('p', 'No completion receipts yet. When you mark a chosen step done, its receipt will appear here.', 'empty'));
   }
   if (span.kind === 'moves') renderMoves(body);
+  if (span.kind === 'people') peopleUI?.render(body, personSelection);
   if (span.kind === 'workspace') {
     const library = element('details', undefined, 'panel file-library'); library.open = !!artifactSelection; library.append(element('summary', state.fileWarning ? 'Connected files unavailable' : `Connected files (${(state.artifacts ?? []).length})`), element('p', 'Exact files, linked to their source thoughts. Files with a damaged source stay downloadable here.', 'small'));
     for (const row of (state.artifacts ?? []).slice().sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id))) library.append(artifactCard(row));
@@ -843,6 +847,7 @@ async function replaceDemo(samples) {
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
     ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
+    peopleUI?.reset(); personSelection = null;
     artifactTarget = null; artifactSelection = null; branchSelection = null; moveEditing = null; branchEditing = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
@@ -874,7 +879,7 @@ async function renderDraftRecovery() {
       const item = element('details'); item.append(element('summary', `${record.context} · ${formatDate(record.updatedAt)}`));
       const raw = JSON.stringify(record.body, null, 2); item.append(element('pre', raw, 'raw'));
       addDraftDownloads(item, record.body);
-      const recover = element('button', 'Recover into this tab', 'quiet'); recover.onclick = async () => { try { if (record.context === 'capture' && $('capture-text').value && JSON.stringify(captureBody()) !== JSON.stringify(record.body)) throw Error('This composer already has different writing.'); if (record.context === `reply:${threadId}` && $('reply-text').value && JSON.stringify(replyBody()) !== JSON.stringify(record.body)) throw Error('This composer already has different writing.'); const current = await shelf.load(record.context); const empty = b => !b || !(b.text || b.name || b.note || b.summary || b.nextAction); if (!empty(current?.body) && JSON.stringify(current.body) !== JSON.stringify(record.body)) throw Error('This tab already has a different draft in that context.'); await shelf.recoverRecord(record); if (record.context === 'capture' && !$('capture-text').value) { setValue('capture-text', record.body.text); $('capture-span').value = record.body.span; } else if (record.context === `reply:${threadId}` && !$('reply-text').value) { setValue('reply-text', record.body.text); replyTarget = record.body.parentId; renderThread(); } notice('Draft recovered into its matching context.'); } catch (e) { fail(e); } }; item.append(recover); host.append(item);
+      const recover = element('button', 'Recover into this tab', 'quiet'); recover.onclick = async () => { try { if (record.context === 'capture' && $('capture-text').value && JSON.stringify(captureBody()) !== JSON.stringify(record.body)) throw Error('This composer already has different writing.'); if (record.context === `reply:${threadId}` && $('reply-text').value && JSON.stringify(replyBody()) !== JSON.stringify(record.body)) throw Error('This composer already has different writing.'); const current = await shelf.load(record.context); const empty = b => !b || !(b.text || b.name || b.note || b.summary || b.nextAction || b.profile && Object.values(b.profile).some(Boolean) || b.when); if (!empty(current?.body) && JSON.stringify(current.body) !== JSON.stringify(record.body)) throw Error('This tab already has a different draft in that context.'); await shelf.recoverRecord(record); if (record.context === 'capture' && !$('capture-text').value) { setValue('capture-text', record.body.text); $('capture-span').value = record.body.span; } else if (record.context === `reply:${threadId}` && !$('reply-text').value) { setValue('reply-text', record.body.text); replyTarget = record.body.parentId; renderThread(); } notice('Draft recovered into its matching context.'); } catch (e) { fail(e); } }; item.append(recover); host.append(item);
     }
     for (const copy of report.damaged) {
       const item = element('details'); item.append(element('summary', `${copy.source}: ${copy.reason}`)); if (copy.raw !== null) { item.append(element('pre', copy.raw, 'raw')); const download = element('button', 'Download raw recovery copy (JSON)', 'text-button'); download.onclick = () => downloadText(copy.raw, 'effort-draft-recovery.json', 'application/json'); try { const parsed = JSON.parse(copy.raw); addDraftDownloads(item, parsed.body ?? parsed); } catch {} const recover = element('button', 'Recover into matching context', 'quiet'); recover.onclick = async () => { try { if ($('capture-text').value || $('reply-text').value) throw Error('Copy or save the open composer writing before recovering this copy.'); const record = await shelf.recover(copy.source); if (record.context === 'capture' && !$('capture-text').value) { setValue('capture-text', record.body.text); $('capture-span').value = record.body.span; } notice('Copy recovered into its matching context.'); } catch (e) { fail(e); } }; item.append(download, recover); } host.append(item);
@@ -887,12 +892,13 @@ function recoverLegacyCapture() {
   if (workspaceEpoch !== undefined && workspaceEpoch !== null) return false;
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
 }
+peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
 try {
   store = createStore(); await store.seed(); await refreshed(); workspaceEpoch = (await store.health()).epoch;
   try {
     shelf = createDraftShelf(); await shelf.ready;
     const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); $('capture-span').value = draft.body.span; }
-    else if ((await shelf.list()).records.some(record => record.body.text || record.body.name || record.body.note || record.body.summary || record.body.nextAction || record.body.prompt || record.body.status)) notice('Unfinished writing is available in Engine Room → Draft recovery.');
+    else if ((await shelf.list()).records.some(record => record.body.text || record.body.name || record.body.note || record.body.summary || record.body.nextAction || record.body.prompt || record.body.status || record.body.profile?.name || record.body.when)) notice('Unfinished writing is available in Engine Room → Draft recovery.');
   } catch (error) {
     await shelf?.close().catch(() => {}); shelf = null; const recovered = recoverLegacyCapture();
     status('draft-state', `Draft storage could not open: ${error.message}. ${recovered ? 'A legacy copy is visible here; copy it before leaving.' : 'Writing is only kept in this window. Copy it before leaving.'} Original saving is available.`);
@@ -911,11 +917,11 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
+  if (booting || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
   if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {
-    const pending = [['capture', captureBody()]];
+    const pending = [['capture', captureBody()], ...(peopleUI?.pendingDrafts()??[]).map(d=>[d.context,d.body])];
     if (moveEditing) pending.push([moveContext(), moveBody()]);
     if (branchEditing) pending.push([`branch:${branchEditing.id}`, branchBody()]);
     if (explorationDraft) pending.push([`explore:${explorationDraft.sourceId}`, exploreBody()]);

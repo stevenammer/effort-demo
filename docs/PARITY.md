@@ -19,3 +19,21 @@ This is the delivery map for the owner's public-centerpiece goal. It is not a li
 The public app must be useful as an offline browser workspace, not merely a slideshow. Provider execution must remain explicit and bounded; private runtime access, paid calls and employer/family data are outside public authorization. These boundaries do not justify dropping the corresponding workflow: configured, example and unavailable states must be clear and usable.
 
 Completion requires evidence for the full map, including user journeys, recovery and scale, rather than the number of tests or a polished landing page.
+
+## Expanded native-intention audit for the active goal
+
+The newer owner goal explicitly asks for the real version and intention, then more red-teaming. The earlier public-demo boundaries don't turn missing workflows into completed features. Native references below identify additional work; private records and services aren't copied into the public app.
+
+| Native area | Public requirement and acceptance | Current evidence/gap |
+|---|---|---|
+| PeopleScreen, people core | Optional relationship context, exact manual source links, revision/draft history, self-reported conversations and optional cadence without obligations | People implementation underway; not released or fully verified. |
+| RawDumps, store/edit, rawArchive | Full chronological FORT, live reversible EF while writing, separate corrections/transcripts, deep search/pagination around stable source IDs | Exact captures/read views exist; complete raw archive/live projection/corrections remain incomplete. |
+| threadflow, states, agents, operating | Explicit THREAD review, bounded invited roles, requested result, CANDIDATE/REVIEW and commitment boundary, named context/egress, retryable pending/failed replies with provenance | Human threads exist; functional bounded assistance/review/provider path remains incomplete. |
+| native voice, raw backup | Explicit microphone permission, durable original audio, separate transcript, retry/abort/offline states and complete transport | Attachments support audio bytes; integrated voice capture/transcript workflow isn't implemented. |
+| GroceriesScreen, groceries core | Separate offline ledger, explicit check-off and re-add without erasing prior purchase history, honest optional bridge status | Public equivalent absent; private family bridge/data stay separate. |
+| WorkspaceScreen, workspace core | User-owned project context and source paths/links, explicit resume, cached snapshots and freshness/error evidence without automatically making work | Current Workspace has files/commitments/return points; project registry depth remains incomplete. |
+| EngineRoom, lanes, laneStatus, diagnose, sync | Real connection/health/status/queue/backup/worker evidence, unknown/stale states, explicit configured endpoints and source times | Browser storage/offline evidence exists; broader runtime/optional integration diagnostics incomplete. |
+| AgentRun, runner | Explicit project/model/effort and READ/EDIT/TEST grant, isolated execution, visible denial/retry/stop, no silent execution authority | Browser equivalent/optional companion execution path absent. Actual user repositories aren't execution fixtures. |
+| interrupt, resurface, night, routing | User-controlled interruption, chosen NOW survives novelty, private People context can't silently leave scope, no guilt backlog or person judgments | NOW protection exists; broader explicit routing/mode/permission policy and adverse-case evidence incomplete. |
+| exportRaw, rawBackup, sync | Portable whole-workspace exit door, exact supported artifacts/metadata, retries/conflict recovery and truthful omissions | Browser backup covers released entities; every new entity, voice and optional bridge state need coverage. |
+| Complete product and red team | Native-intention journeys plus upstream-inspired hostile inputs, fault injection, concurrency, scale, accessibility, full requirement-by-requirement audit | See RED_TEAM.md. No full completion claim is supported yet. |

@@ -4,7 +4,7 @@ export { readablePreview } from './core/readable.js';
 
 // All markup is created from a small parser vocabulary. Source text is never HTML.
 export function readingLink(value) {
-  if (typeof value === 'string' && /^#(?:thread|artifact|branch)\//.test(value) && validRoute(value.slice(1))) return value;
+  if (typeof value === 'string' && /^#(?:thread|artifact|branch|person)\//.test(value) && validRoute(value.slice(1))) return value;
   try {
     const url = new URL(value);
     return ['http:', 'https:'].includes(url.protocol) && url.hostname && !url.username && !url.password ? url.href : null;

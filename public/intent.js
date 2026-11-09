@@ -48,6 +48,7 @@ export function commitmentGroups(events) {
 export function deriveCommitments(events) { return [...commitmentGroups(events).values()].map(deriveCommitment); }
 export function validRoute(route) {
   if (['home', 'spans', 'engine'].includes(route)) return true;
+  if (/^person\//.test(route)) return validId(route.slice(7));
   if (/^branch\//.test(route)) return validId(route.slice(7));
   if (/^artifact\//.test(route)) return validId(route.slice(9));
   if (/^thread\//.test(route)) return validId(route.slice(7));

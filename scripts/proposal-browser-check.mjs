@@ -217,8 +217,8 @@ try {
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#download').click()]);
   const backup = await readFile(await download.path(), 'utf8');
   const bundle = JSON.parse(backup), payload = structuredClone(bundle.payload);
-  assert.equal(payload.version, 10); assert.ok(payload.captures.some(row => row.id === proposalId));
-  const legacyPayload = structuredClone(payload); legacyPayload.version = 6; delete legacyPayload.openedReceipts; delete legacyPayload.artifacts; delete legacyPayload.branchEvents; delete legacyPayload.moveEvents;
+  assert.equal(payload.version, 11); assert.ok(payload.captures.some(row => row.id === proposalId));
+  const legacyPayload = structuredClone(payload); legacyPayload.version = 6; delete legacyPayload.personEvents; delete legacyPayload.contactReceipts; delete legacyPayload.openedReceipts; delete legacyPayload.artifacts; delete legacyPayload.branchEvents; delete legacyPayload.moveEvents;
   legacyPayload.captures = legacyPayload.captures.filter(row => !row.derivedFromId);
   const keptCaptureIds = new Set(legacyPayload.captures.map(row => row.id));
   legacyPayload.now = initialChoice;
@@ -245,7 +245,7 @@ try {
   await oldPage.goto(`${base}/public/`); await oldPage.locator('[data-view="engine"]').click(); await restoreFile(oldPage, legacyBackup);
   assert.equal((await stateOf(oldPage)).captures.some(row => row.derivedFromId), false, 'v6 restore must not invent proposal records');
   const [upgradedDownload] = await Promise.all([oldPage.waitForEvent('download'), oldPage.locator('#download').click()]);
-  assert.equal(JSON.parse(await readFile(await upgradedDownload.path(), 'utf8')).payload.version, 10);
+  assert.equal(JSON.parse(await readFile(await upgradedDownload.path(), 'utf8')).payload.version, 11);
   await oldContext.close();
 
   // Corrupt only the distillation metadata; its exact proposal writing remains available with recovery provenance.

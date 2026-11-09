@@ -83,7 +83,7 @@ test('version 9 backup restores nested branches, typed distillation and drafts i
   await a.store.distill({ explorationId: child.id, type: 'OPEN TENSION', text: 'My question remains open.' });
   const shelf = createDraftShelf({ database: a.db, localStorage: new Storage(), sessionStorage: new Storage(), locks: null });
   const draft = await shelf.save(`distill:${child.id}`, { explorationId: child.id, type: 'HYPOTHESIS', text: 'Unfinished thought.' });
-  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 10);
+  const backup = await a.store.exportData(); assert.equal(JSON.parse(backup).payload.version, 11);
   const b = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false });
   await b.restore(backup); await b.restore(backup); const restored = await b.read();
   assert.deepEqual(restored.explorations, (await a.store.read()).explorations); assert.deepEqual(restored.distillations, (await a.store.read()).distillations);
@@ -130,7 +130,7 @@ test('concurrent branch and distillation retries deduplicate and readback failur
 
 test('a version 5 backup migrates with empty exploration arrays', async () => {
   const a = await setup(), payload = JSON.parse(await a.store.exportData()).payload;
-  payload.version = 5; delete payload.explorations; delete payload.distillations; delete payload.openedReceipts; delete payload.artifacts; delete payload.branchEvents; delete payload.moveEvents;
+  payload.version = 5; delete payload.explorations; delete payload.distillations; delete payload.personEvents; delete payload.contactReceipts; delete payload.openedReceipts; delete payload.artifacts; delete payload.branchEvents; delete payload.moveEvents;
   const b = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }); await b.restore(await bundle(payload));
   const state = await b.read(); assert.deepEqual(state.explorations, []); assert.deepEqual(state.distillations, []); assert.deepEqual(state.captures, payload.captures);
   await close(a); await b.close();

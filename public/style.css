@@ -897,3 +897,7 @@ input[type=file] { max-width:100%; min-width:0; }
 
 .opening-context { border-top: 1px solid var(--line); padding-top: .8rem; margin: 1rem 0; }
 .opening-summary, .unopened-badge { color: #b5c8af; }
+
+.person-card { scroll-margin-top: 1.5rem; }
+.person-card pre { max-height: 24rem; overflow: auto; }
+#person-dialog select, #contact-dialog select { width: 100%; }

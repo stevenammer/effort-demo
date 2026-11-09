@@ -10,13 +10,15 @@ export const DRAFT_RESET_MARKER = `${KEY}-draft-reset-marker`;
 export function markDraftReset(storage) { const marker = crypto.randomUUID(); storage.setItem(DRAFT_RESET_MARKER, marker); return marker; }
 const PREFIX = `${KEY}-shelf-`, TAB = `${KEY}-shelf-tab`;
 const uuid = () => crypto.randomUUID();
-const contextValid = c => typeof c === 'string' && (['capture', 'hold', 'span', 'move'].includes(c) || /^(reply|drop|explore|distill|move|branch):/.test(c) && validId(c.slice(c.indexOf(':') + 1)));
+const contextValid = c => typeof c === 'string' && (['capture', 'hold', 'span', 'move', 'person'].includes(c) || /^(reply|drop|explore|distill|move|branch|person|contact):/.test(c) && validId(c.slice(c.indexOf(':') + 1)));
 const str = (v, max = 4000) => typeof v === 'string' && v.length <= max && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(v);
 function bodyValid(c, b) {
   if (c.startsWith('explore:')) return (exactKeys(b, ['text', 'sourceId', 'parentId', 'returnPointId', 'dial', 'returnData']) || exactKeys(b, ['text', 'sourceId', 'parentId', 'returnPointId', 'dial', 'returnData', 'move']) && moveSnapshotShape(b.move)) && str(b.text) && b.sourceId === c.slice(8) && validId(b.sourceId) && (b.parentId === null || validId(b.parentId)) && (b.returnPointId === null || validId(b.returnPointId)) && ['TIGHT', 'NORMAL', 'WILD', 'UNHINGED SANDBOX'].includes(b.dial) && exactKeys(b.returnData, ['route', 'context', 'expected', 'summary']) && validRoute(b.returnData.route) && validContext(b.returnData.context) && noteAllowed(b.returnData.summary, true) && (b.returnData.expected === null || choiceShape(b.returnData.expected));
   if (c.startsWith('distill:')) return exactKeys(b, ['text', 'explorationId', 'type']) && str(b.text) && b.explorationId === c.slice(8) && ['RECEIPT', 'INSIGHT', 'HYPOTHESIS', 'EXPERIMENT', 'DECISION CANDIDATE', 'FUTURE ARCHITECTURE', 'OPEN TENSION', 'WEIRD BUT ALIVE', 'NOISE'].includes(b.type);
   if (c === 'move' || c.startsWith('move:')) return exactKeys(b, ['moveId', 'name', 'prompt', 'enabled', 'expectedLatestId']) && (b.moveId === null || validId(b.moveId)) && (c === 'move' ? b.moveId === null : b.moveId === c.slice(5)) && str(b.name, 120) && str(b.prompt, 2000) && typeof b.enabled === 'boolean' && (b.expectedLatestId === null || validId(b.expectedLatestId));
   if (c.startsWith('branch:')) return exactKeys(b, ['branchId', 'status', 'note', 'evidence', 'expectedLatestId']) && b.branchId === c.slice(7) && ['', 'active', 'parked', 'distilled', 'discarded', 'weird_but_alive'].includes(b.status) && str(b.note) && typeof b.evidence === 'boolean' && (b.expectedLatestId === null || validId(b.expectedLatestId));
+  if (c === 'person' || c.startsWith('person:')) return exactKeys(b, ['personId','profile','links','expectedLatestId']) && validId(b.personId) && (c === 'person' || c.slice(7) === b.personId) && exactKeys(b.profile, ['name','relationship','notes','importantDates','theyToldMe','iToldThem','cadenceDays']) && str(b.profile.name,120) && !/[\r\n\t]/.test(b.profile.name) && str(b.profile.relationship,200) && !/[\r\n\t]/.test(b.profile.relationship) && str(b.profile.notes) && str(b.profile.importantDates,1000) && str(b.profile.theyToldMe) && str(b.profile.iToldThem) && str(b.profile.cadenceDays,10) && !/[\r\n\t]/.test(b.profile.cadenceDays) && Array.isArray(b.links) && b.links.length<=50 && b.links.every(l=>exactKeys(l,['captureId','captureHash'])&&validId(l.captureId)&&validHash(l.captureHash)) && new Set(b.links.map(l=>l.captureId)).size===b.links.length && (b.expectedLatestId === null || validId(b.expectedLatestId));
+  if (c.startsWith('contact:')) return exactKeys(b,['personId','when','offsetMinutes','note','requestId']) && b.personId === c.slice(8) && validId(b.personId) && str(b.when,40) && (b.offsetMinutes===null || Number.isInteger(b.offsetMinutes)&&Math.abs(b.offsetMinutes)<=1440) && str(b.note) && validId(b.requestId);
   if (c === 'capture') return exactKeys(b, ['text', 'span']) && str(b.text) && str(b.span, 100);
   if (c.startsWith('reply:')) return exactKeys(b, ['text', 'parentId']) && str(b.text) && (b.parentId === null || validId(b.parentId));
   if (c === 'span') return exactKeys(b, ['name']) && str(b.name, 100);
@@ -30,7 +32,7 @@ export async function validateDraft(r) {
   if (await sha256(JSON.stringify(payload)) !== hash) throw new IntegrityError('Draft checksum mismatch.');
   return r;
 }
-const emptyBody = (c, old) => c === 'move' || c.startsWith('move:') ? { ...old, name: '', prompt: '' } : c.startsWith('branch:') ? { ...old, status: '', note: '', evidence: false } : c.startsWith('explore:') || c.startsWith('distill:') ? { ...old, text: '' } : c === 'capture' ? { text: '', span: old?.span ?? '' } : c.startsWith('reply:') ? { text: '', parentId: old?.parentId ?? null } : c === 'span' ? { name: '' } : c.startsWith('drop:') ? { note: '', commitmentId: c.slice(5), latestId: old?.latestId ?? null } : { summary: '', nextAction: '', route: old?.route ?? 'home', context: old?.context ?? { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected: old?.expected ?? null };
+const emptyBody = (c, old) => c === 'person' || c.startsWith('person:') ? {...old,profile:{name:'',relationship:'',notes:'',importantDates:'',theyToldMe:'',iToldThem:'',cadenceDays:''},links:[]} : c.startsWith('contact:') ? {...old,when:'',note:'',offsetMinutes:null} : c === 'move' || c.startsWith('move:') ? { ...old, name: '', prompt: '' } : c.startsWith('branch:') ? { ...old, status: '', note: '', evidence: false } : c.startsWith('explore:') || c.startsWith('distill:') ? { ...old, text: '' } : c === 'capture' ? { text: '', span: old?.span ?? '' } : c.startsWith('reply:') ? { text: '', parentId: old?.parentId ?? null } : c === 'span' ? { name: '' } : c.startsWith('drop:') ? { note: '', commitmentId: c.slice(5), latestId: old?.latestId ?? null } : { summary: '', nextAction: '', route: old?.route ?? 'home', context: old?.context ?? { scrollY: 0, spanSearch: '', sourceExpanded: false }, expected: old?.expected ?? null };
 
 // save(context, body) mirrors synchronously and returns Promise<verified record>.
 // load(context) returns this writer's verified record or null. list()/recover() return
@@ -49,7 +51,7 @@ export function createDraftShelf(options = {}) {
   let tabId = uuid(), release, lease, closed = false, serial = 0, initialized = false;
   const bootstrap = uuid(), bootstrapKey = `${TAB}-bootstraps`, serialKey = `${TAB}-attempt`; let predecessors = []; let sessionAvailable = true;
   try { if (!sessionStorage) throw Error(); const saved = JSON.parse(sessionStorage.getItem(bootstrapKey) || "[]"); if (Array.isArray(saved)) predecessors = saved.filter(validId).slice(-63); serial = Number(sessionStorage.getItem(serialKey) || 0); if (!Number.isSafeInteger(serial) || serial < 0) serial = 0; sessionStorage.setItem(bootstrapKey, JSON.stringify([...predecessors, bootstrap])); } catch { sessionAvailable = false; }
-  const known = new Map(), queues = new Map(), lastWrites = new Map(), pointers = new Map(), attempts = new Map(), warnings = [];
+  const known = new Map(), queues = new Map(), lastWrites = new Map(), pointers = new Map(), attempts = new Map(), pendingClears = new Map(), warnings = [];
   const warn = message => { if (!warnings.includes(message)) warnings.push(message); };
   if (!sessionAvailable) warn('Session storage is unavailable. Emergency copies remain available in recovery, but automatic continuity is unavailable.');
   let candidate; try { candidate = sessionStorage?.getItem(TAB); } catch { warn('Session storage is unavailable. Draft identity will change after reload.'); }
@@ -167,8 +169,9 @@ export function createDraftShelf(options = {}) {
     if (mirrored) try { if (localStorage.getItem(mirrored.key) === mirrored.raw) localStorage.removeItem(mirrored.key); } catch { warn('The verified draft was saved, but its emergency copy could not be removed.'); }
     return record;
   }
-  function save(context, body) {
+  function save(context, body, fromClear = false) {
     if (closed || !contextValid(context) || !bodyValid(context, body)) return Promise.reject(Error('Invalid draft or closed shelf.'));
+    if (!fromClear) pendingClears.delete(context);
     const saveEpoch = epochPromise;
     let currentMarker = resetMarker; try { currentMarker = localStorage?.getItem(DRAFT_RESET_MARKER) ?? null; } catch {}
     if (currentMarker !== resetMarker) return Promise.reject(Error('The workspace was reset. Reload before saving this draft.'));
@@ -221,6 +224,35 @@ export function createDraftShelf(options = {}) {
     if (existing && !isEmpty(context, existing.body)) throw Error('This tab already has a draft in that context. Copy the recovered text instead.');
     return save(context, body);
   }
-  function isEmpty(context, body) { return context === 'capture' || context.startsWith('reply:') ? !body.text : context === 'span' ? !body.name : context.startsWith('drop:') ? !body.note : !body.summary && !body.nextAction; }
-  return { ready, load, migrateLegacy, save, health: () => ({ warnings: [...warnings] }), async clear(context, expectedBody) { await (queues.get(context) ?? Promise.resolve()).catch(() => {}); const old = known.get(context) ?? (await stored(context)).selected; if (expectedBody !== undefined && !same(attempts.get(context) ?? old?.body, expectedBody)) throw Error('Draft changed before clearing.'); if (expectedBody === undefined && attempts.has(context) && !same(attempts.get(context), old?.body)) throw Error('Draft changed before clearing.'); return save(context, emptyBody(context, old?.body)); }, list: inspect, async recoverRecord(record) { await validateDraft(record); return recoverBody(record.context, record.body); }, async recover(source) { if (source === undefined) return inspect(); const item = (await inspect()).damaged.find(entry => entry.source === source); if (!item?.raw || source.startsWith('database:')) throw Error('This recovery entry cannot be imported automatically.'); const value = JSON.parse(item.raw); const context = source.startsWith(PREFIX) ? value.context : source === `${KEY}-draft` ? 'capture' : `reply:${source.slice(`${KEY}-reply-`.length)}`; const body = source.startsWith(PREFIX) ? value.body : value; return recoverBody(context, body); }, async flush() { await Promise.all([...lastWrites.values()]); }, async close() { closed = true; try { await Promise.allSettled([...queues.values()]); } finally { await ready; release?.(); await lease?.catch(() => {}); } } };
+  function isEmpty(context, body) {
+    if (context === 'capture' || context.startsWith('reply:') || context.startsWith('explore:') || context.startsWith('distill:')) return !body.text;
+    if (context === 'span') return !body.name;
+    if (context.startsWith('drop:')) return !body.note;
+    if (context === 'move' || context.startsWith('move:')) return !body.name && !body.prompt;
+    if (context.startsWith('branch:')) return !body.status && !body.note && !body.evidence;
+    if (context === 'person' || context.startsWith('person:')) return !Object.values(body.profile).some(Boolean) && !body.links.length;
+    if (context.startsWith('contact:')) return !body.when && !body.note;
+    return !body.summary && !body.nextAction;
+  }
+  async function clear(context, expectedBody) {
+    await (queues.get(context) ?? Promise.resolve()).catch(() => {});
+    const old = known.get(context) ?? (await stored(context)).selected;
+    const attempted = attempts.get(context), pending = pendingClears.get(context);
+    const retry = expectedBody !== undefined && pending && same(expectedBody, pending.original) && same(attempted, pending.tombstone);
+    if (expectedBody !== undefined && !retry && !same(attempted ?? old?.body, expectedBody)) throw Error('Draft changed before clearing.');
+    if (expectedBody === undefined && attempts.has(context) && !same(attempted, old?.body)) throw Error('Draft changed before clearing.');
+    if (retry && old && same(old.body, pending.tombstone)) {
+      const expectedEpoch = await epochPromise;
+      await database.run(['meta', 'drafts'], 'readonly', async tx => {
+        if (((await request(tx.objectStore('meta').get('epoch')))?.value ?? null) !== expectedEpoch) throw Error('The workspace was reset while saving. Your draft is still here.');
+        if (!same(await request(tx.objectStore('drafts').get(old.key)), old)) throw Error('Draft changed before clearing.');
+      });
+      return old;
+    }
+    const original = retry ? pending.original : attempted ?? old?.body;
+    const tombstone = retry ? pending.tombstone : emptyBody(context, original);
+    pendingClears.set(context, { original: structuredClone(original), tombstone: structuredClone(tombstone) });
+    return save(context, tombstone, true);
+  }
+  return { ready, load, migrateLegacy, save, health: () => ({ warnings: [...warnings] }), clear, list: inspect, async recoverRecord(record) { await validateDraft(record); return recoverBody(record.context, record.body); }, async recover(source) { if (source === undefined) return inspect(); const item = (await inspect()).damaged.find(entry => entry.source === source); if (!item?.raw || source.startsWith('database:')) throw Error('This recovery entry cannot be imported automatically.'); const value = JSON.parse(item.raw); const context = source.startsWith(PREFIX) ? value.context : source === `${KEY}-draft` ? 'capture' : `reply:${source.slice(`${KEY}-reply-`.length)}`; const body = source.startsWith(PREFIX) ? value.body : value; return recoverBody(context, body); }, async flush() { await Promise.all([...lastWrites.values()]); }, async close() { closed = true; try { await Promise.allSettled([...queues.values()]); } finally { await ready; release?.(); await lease?.catch(() => {}); } } };
 }

@@ -2,7 +2,17 @@ export const clone = value => structuredClone(value);
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const exactKeys = (object, keys) => object && typeof object === 'object' && !Array.isArray(object) &&
   Object.keys(object).sort().join(',') === [...keys].sort().join(',');
-export const validDate = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT/.test(value) && Number.isFinite(Date.parse(value));
+export function validDate(value) {
+  if (typeof value !== 'string') return false;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!parts) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone] = parts;
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText), leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || Number(hourText) > 23 || Number(minuteText) > 59 || Number(secondText ?? 0) > 59) return false;
+  if (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4, 6)) > 59)) return false;
+  return Number.isFinite(Date.parse(value));
+}
 export const validHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 export const validId = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value);
 export class IntegrityError extends Error {}

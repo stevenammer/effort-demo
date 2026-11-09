@@ -3,7 +3,7 @@
 // This is deliberately a display-only, lossless-ish reader. It never changes the
 // stored string: callers keep the original and render these tokens instead.
 const SAFE_URL = /^https?:\/\/[^\s<>()]+$/i;
-const LOCAL_URL = /^#(?:thread|artifact|branch)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const LOCAL_URL = /^#(?:thread|artifact|branch|person)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const BARE_URL = /https?:\/\/[^\s<>()]+/g;
 const LIST = /^(\s*)([-*+])\s+(.+)$/;
 const ORDERED = /^(\s*)(\d+)[.)]\s+(.+)$/;
@@ -11,7 +11,9 @@ const HEADING = /^(#{1,6})\s+(.+)$/;
 
 function safeUrl(value) {
   const url = String(value || '').trim();
-  return SAFE_URL.test(url) || LOCAL_URL.test(url) ? url : null;
+  if (LOCAL_URL.test(url)) return url;
+  if (!SAFE_URL.test(url)) return null;
+  try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && parsed.hostname && !parsed.username && !parsed.password ? url : null; } catch { return null; }
 }
 
 function trimUrl(value) {
@@ -47,7 +49,7 @@ function inline(text) {
     const link = BARE_URL.exec(rest);
     if (link && link.index === 0) {
       const url = trimUrl(link[0]);
-      if (url) out.push({ type: 'link', text: url, url });
+      if (safeUrl(url)) out.push({ type: 'link', text: url, url }); else pushText(url);
       pushText(link[0].slice(url.length));
       at += link[0].length; continue;
     }
