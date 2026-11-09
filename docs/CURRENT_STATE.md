@@ -4,7 +4,7 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-Published `main` runtime is **1c367aaeb7b02323c06c871a43c20c65a674939c**. Thinking moves and branch continuity join the released connected-file and proposal flows. The checkout is on `main`; the feature branches retain implementation history. Inspect actual Git state and this checkpoint before resuming.
+Published `main` release is **2f0bbc4b5b0055e339c26e86775460d554b89002** (opening-context implementation5260d90). Exact-source opening context joins the released thinking, connected-file and proposal flows. The checkout is on `main`; the feature branches retain implementation history. Inspect actual Git state and this checkpoint before resuming.
 
 The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
@@ -34,7 +34,7 @@ Core, exploration, draft and offline/update browser regressions passed. Separate
 
 Review caught and fixed duplicate preparation after backup restoration and source changes during retry verification. An old exploration test incorrectly waited for a hidden Home element after offline Engine Room reload; it now checks the restored route before opening Home. The proposal script also checks preserved raw recovery text by opening its disclosure, instead of expecting collapsed text to be visible. See `docs/PROPOSALS.md` for the product contract.
 
-## Current released slice: connected files and cross-links
+## Earlier released slice: connected files and cross-links
 
 The connected-file runtime is `81d0238`, published on main. See `docs/ARTIFACTS.md` for the implemented contract.
 
@@ -44,7 +44,7 @@ IndexedDB is schema 6 and backup is version 8, accepting versions 1 through 7. F
 
 The parent ran the full suite: **127 tests pass**. Browser acceptance has passed at 1440/390/320, including actual binary/full-size uploads/downloads, cross-links, permalinks, retries, backups, missing sources, large recovery copies, file-store failure, asynchronous reset and offline reload/download. The actual previously published DB5 client was upgraded to DB6 while two separate drafts, including late stale-tab writing, remained recoverable. Offline/update regression also checks a pending file selection pauses the update safely. Syntax checking was added to CI after an early local UI syntax error was caught before publication. A fresh checkout passed `npm ci --offline`, all 127 tests, syntax checking and the publication guard over 70 tracked files plus public history. GitHub checks **42513321198** and Pages **42513320239** succeeded. The parent executed the complete file/cross-link suite against the hosted site at all three widths, including full 2 MiB uploads/downloads, safe previews, exact raw recovery downloads, restored retries, unreadable file storage, reset races and offline reload/download. No page errors or external requests were observed. The hosted asset manifest matches the tested source (manifest-file SHA-256 `8667ae617d208afc0739017a0c0999e40ba9a7806e104d5e911f07225f6d957d`).
 
-## Current released slice: thinking continuity
+## Earlier released slice: thinking continuity
 
 The slice was developed on **feature/thinking-continuity-20261108**, based on published documentation checkpoint `c018ae4`, and fast-forwarded to main for release. Implementation commit **d7fc0e0** adds optional thinking moves, exact saved prompt revisions, editable/off definitions, custom moves, explicit example tagging, immutable branch status/history, session-root links and branch permalinks. Recovery fix **f9d2c1f** prevents an older restored history prefix from silently reactivating an uncertain definition or status. A person can explicitly append a replacement choice; raw damaged history remains. See `docs/THINKING.md`.
 
@@ -56,23 +56,23 @@ Local core, exploration, proposal, connected-file, draft, composer and offline/u
 
 Runtime `1c367aa` is pushed to main and deployed on GitHub Pages. GitHub checks **42542153311** and Pages **42542152396** succeeded. Hosted thinking acceptance passed at all three widths with no page errors or external requests. The hosted manifest exactly matches the tested source (manifest-file SHA-256 `fe435d85224ad802819bf8fe75ff75be60bbfebd75d0cfca4ec716ffd31dd6fa`). The remaining full-map work stays open; this release does not prove the whole product complete.
 
-## Local slice in progress: opening context
+## Current released slice: opening context
 
-Branch **feature/opened-context-20261108** adds exact-source opening receipts, neutral not-opened counts in Attention Spans and explicit acknowledgement of replies arriving in an already open thread. No timestamp cutoff and no NOW mutation. Schema8 / backup10 accepts backups1 through9. See `docs/OPENED.md`.
+Developed on **feature/opened-context-20261108** and released on main, this slice adds exact-source opening receipts, neutral not-opened counts in Attention Spans and explicit acknowledgement of replies arriving in an already open thread. No timestamp cutoff and no NOW mutation. Schema8 / backup10 accepts backups1 through9. See `docs/OPENED.md`.
 
-Parent full suite: **165/165 pass**. Focused storage integration also covers backup portability, older backup restoration, independent timestamps, readback retry, corrupt-receipt recovery, all three optional stores failing together and continued capture with unknown opening status. New browser acceptance passes at1440/390/320, with backdated cross-tab replies, exact acknowledgement, failed readback retry, unchanged NOW and backup10/older9 restoration. Optional-store failure preserves primary capture; a blocked acknowledgement cannot cross reset, and the next workspace can open normally. No page errors or external requests. This slice is not published; regression, upgrade and fresh-checkout gates remain. Last deployed runtime remains1c367aa (release documentation78af122).
+Parent full suite: **165/165 pass**. Focused storage integration also covers backup portability, older backup restoration, independent timestamps, readback retry, corrupt-receipt recovery, all three optional stores failing together and continued capture with unknown opening status. New browser acceptance passes at1440/390/320, with backdated cross-tab replies, exact acknowledgement, failed readback retry, unchanged NOW and backup10/older9 restoration. Optional-store failure preserves primary capture; a blocked acknowledgement cannot cross reset, and the next workspace can open normally. No page errors or external requests. This slice is published. GitHub checks42548064777 and Pages42548063546 succeeded for2f0bbc4. The complete opening-context suite also passed on the hosted site at1440/390/320, including storage and reset faults, with no page errors or external requests. The hosted manifest matches tested source exactly (SHA-256 dc6fe9ddd6cfe49dc005c1b70225c6718d3f1a39e4a8ee8fb2d080fffc032851).
 
-Local core, thinking, proposal, file, exploration, draft and composer browser regressions pass. Offline/update acceptance passed on diagnostic rerun after one persistent-browser readiness timeout that did not reproduce; diagnostics now report readiness/controller/cache state on failure. The actual published DB7 client upgrades to DB8 with exact files, move/branch histories, two draft copies and late stale-tab writing preserved. A fresh clone of5260d90 passes offline install, all165 tests, syntax and the80-file publication guard. Publication and hosted verification remain. People relationships remain the next connected-depth slice, followed by explicitly invoked bounded help and the remaining full map. Preserve this branch rather than restart from main.
+Local core, thinking, proposal, file, exploration, draft and composer browser regressions pass. Offline/update acceptance passed on diagnostic rerun after one persistent-browser readiness timeout that did not reproduce; diagnostics now report readiness/controller/cache state on failure. The actual published DB7 client upgrades to DB8 with exact files, move/branch histories, two draft copies and late stale-tab writing preserved. A fresh clone of5260d90 passes offline install, all165 tests, syntax and the80-file publication guard. People relationships are the next connected-depth slice, followed by explicitly invoked bounded help and the remaining full map. Continue from main. Native People fields are name, relationship, notes, important dates, things they told me, things I told them and optional cadence. Preserve revisions and drafts, use manual exact-source links and self-reported contact receipts, and keep messages, inferred relationship judgments and obligations out of the flow.
 
 ## Resume here
 
 1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.
-2. Branch/session status and thinking moves are released. Continue from the current implementation. Preserve exact source thought, parent/root/return links, neutral states, editable/optional moves, evidence from chosen work and the promotion boundary. Put this depth in Attention Spans and exploration, without cluttering Home.
-3. Continue People/unread depth and explicitly invoked bounded help. Full-scope completion remains unproven: scale/cache policy, broader relation depth and the technical case study/completion audit still require work and real evidence. Green narrow tests are not completion of the owner's entire goal.
+2. Exact-source opening context, branch/session status and thinking moves are released. Continue from the current implementation. Preserve exact source thought, parent/root/return links, neutral states, editable/optional moves, evidence from chosen work and the promotion boundary. Put this depth in Attention Spans and exploration, without cluttering Home.
+3. Continue People relationship depth and explicitly invoked bounded help. Full-scope completion remains unproven: scale/cache policy, broader relation depth and the technical case study/completion audit still require work and real evidence. Green narrow tests are not completion of the owner's entire goal.
 
 ## Remaining full-map work
 
-People depth and unread context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
+People depth and broader relationship context; an explicitly invoked bounded optional helper with provenance/permission receipts; scale/recovery/cache budgets; and a public technical case study plus a full-scope completion audit. Green narrow tests are not completion evidence for the whole product.
 
 ## Boundaries
 
