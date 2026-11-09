@@ -18,7 +18,7 @@ export function privateBackendURL(value) {
   }catch{return null;}
 }
 export function validReviewRoute(route) {
-  return route===null || exactKeys(route,['companion','backend','model']) && typeof route.companion==='string' && typeof route.backend==='string' && companionURL(route.companion)===route.companion && privateBackendURL(route.backend)===route.backend && typeof route.model==='string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(route.model) && !/(?:^|[-/:])cloud(?:$|[-/:])/i.test(route.model);
+  return route===null || (exactKeys(route,['companion','backend','model'])||exactKeys(route,['companion','backend','model','engine'])&&route.engine==='llama.cpp') && typeof route.companion==='string' && typeof route.backend==='string' && companionURL(route.companion)===route.companion && privateBackendURL(route.backend)===route.backend && typeof route.model==='string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(route.model) && !/(?:^|[-/:])cloud(?:$|[-/:])/i.test(route.model);
 }
 const meta=(tx,key)=>request(tx.objectStore('meta').get(key)).then(r=>r?.value);
 const size=value=>new TextEncoder().encode(JSON.stringify(value)).length;
