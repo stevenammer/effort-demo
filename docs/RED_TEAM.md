@@ -31,4 +31,6 @@ The active goal includes parity with the actual app and its intention, followed 
 
 ## Further campaigns, still required
 
+The FORT slice additionally executes a real browser1,000-original fixture with50 rendered cards, refused over-capacity capture with exact draft retention, invalidated-source removal and clearing hidden archive/draft projections on reset. Exact source offsets and whole-workspace entity limits still require the wider audit.
+
 Model-based event sequences across save/edit/link/contact/reset/restore, real browser quota denial and process termination, source corruption between validation and commit, cached upgrade during pending input, 1,000-original scale, large exact-byte attachments, encoded and Unicode link variants, optional-provider permission/egress boundaries, and completion audit against native source. Use fixed seeds and save minimal failing fixtures. Record executed commands, actual failure evidence, patch and regression receipt rather than declaring a category safe from one example.

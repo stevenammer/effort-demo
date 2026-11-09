@@ -3,7 +3,7 @@
 // This is deliberately a display-only, lossless-ish reader. It never changes the
 // stored string: callers keep the original and render these tokens instead.
 const SAFE_URL = /^https?:\/\/[^\s<>()]+$/i;
-const LOCAL_URL = /^#(?:thread|artifact|branch|person)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const LOCAL_URL = /^#(?:thread|artifact|branch|person|fort)\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const BARE_URL = /https?:\/\/[^\s<>()]+/g;
 const LIST = /^(\s*)([-*+])\s+(.+)$/;
 const ORDERED = /^(\s*)(\d+)[.)]\s+(.+)$/;
@@ -11,7 +11,7 @@ const HEADING = /^(#{1,6})\s+(.+)$/;
 
 function safeUrl(value) {
   const url = String(value || '').trim();
-  if (LOCAL_URL.test(url) && /^#(?:thread|artifact|branch|person)\//.test(url)) return url;
+  if (LOCAL_URL.test(url) && /^#(?:thread|artifact|branch|person|fort)\//.test(url)) return url;
   if (!SAFE_URL.test(url)) return null;
   try { const parsed = new URL(url); return ['http:', 'https:'].includes(parsed.protocol) && parsed.hostname && !parsed.username && !parsed.password ? url : null; } catch { return null; }
 }

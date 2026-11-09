@@ -687,7 +687,7 @@ textarea {
   }
   .rail nav {
     display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-template-columns:repeat(2,minmax(0,1fr));
     gap:.3rem;
     margin-top:1.1rem;
     overflow:visible
@@ -901,3 +901,13 @@ input[type=file] { max-width:100%; min-width:0; }
 .person-card { scroll-margin-top: 1.5rem; }
 .person-card pre { max-height: 24rem; overflow: auto; }
 #person-dialog select, #contact-dialog select { width: 100%; }
+
+.archive-card { scroll-margin-top:1rem; }
+.archive-search { margin:1rem 0; }
+.archive-search input { width:100%; }
+.capture-projection { border-top:1px solid var(--line); margin:1rem 0; padding-top:.5rem; }
+#capture-preview { max-height:22rem; overflow:auto; }
+#capture-preview .fragment { display:block; }
+#capture-preview .source-group { margin:.5rem 0; }
+.archive-card .fragment { display:block; }
+.archive-card .source-group h3 { font-size:.9rem; }

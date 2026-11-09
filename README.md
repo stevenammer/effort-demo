@@ -85,6 +85,7 @@ PLAYWRIGHT_DIR=/path/to/playwright node scripts/artifact-upgrade-browser-check.m
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/thinking-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/opened-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/people-browser-check.mjs
+PLAYWRIGHT_DIR=/path/to/playwright node scripts/archive-browser-check.mjs
 PLAYWRIGHT_DIR=/path/to/playwright node scripts/redteam-reading-browser-check.mjs
 ```
 
@@ -111,3 +112,5 @@ Thinking moves are optional prompts you can edit, turn off or add yourself. A br
 Attention Spans show exact posts and replies not opened here. Opening a thread acknowledges only its displayed writing; later replies keep their own status, even with older timestamps. This records opening, not reading, agreement or completion. See [the opening-context contract](docs/OPENED.md).
 
 People keeps optional relationship context, manually selected source links, exact revision history and self-reported conversations inside its Attention Span. Contact drafts preserve timezone intent, including ambiguous DST times; editing context never logs a conversation or changes NOW. See [the People contract](docs/PEOPLE.md).
+
+FORT / EF opens the full verified original history, with literal search, stable source links and older-capture paging. EF also organizes the capture draft live; switching it off shows the exact wording. A preview failure leaves original saving available. See [the FORT and live projection contract](docs/FORT.md).

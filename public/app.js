@@ -1,3 +1,4 @@
+import { createArchiveUI } from './archive-ui.js';
 import { createPeopleUI } from './people-ui.js';
 import { deriveOpened } from './opened.js';
 import { deriveMoves, deriveBranchStatuses, moveSnapshot, validMoveSnapshot } from './thinking.js';
@@ -19,7 +20,17 @@ const displayTitle = (text, max = 90) => {
   return titleOf(readablePreview(text, Math.max(max * 3, 360)), max) || 'Untitled thought';
 };
 const label = { action_candidate: 'Possible action', explicit_commitment: 'Stated intent', delegation: 'Delegation', waiting_on: 'Waiting on', question: 'Question', idea: 'Idea', decision: 'Decision', constraint: 'Rule or limit', event_or_fact: 'Note', reference: 'Reference', reflection: 'Reflection', unclear: 'Unsorted' };
-let peopleUI, personSelection = null;
+let peopleUI, archiveUI, personSelection = null;
+let efOn = true;
+try { efOn = localStorage.getItem('effort-display-ef') !== 'off'; } catch {}
+function setEF(on) { efOn = !!on; try { localStorage.setItem('effort-display-ef', efOn ? 'on' : 'off'); } catch {} renderCapturePreview(); archiveUI?.modeChanged(); }
+function renderCapturePreview() {
+  const host = $('capture-preview'); if (!host) return;
+  $('capture-ef').textContent = efOn ? 'EF ON' : 'EF OFF'; $('capture-ef').setAttribute('aria-pressed', String(efOn));
+  const text = value('capture-text');
+  try { host.replaceChildren(text ? efOn ? organized({id:'draft',text}, false) : element('pre', text, 'raw') : element('p', 'Organization appears as you write. Saving keeps the exact original.', 'small')); }
+  catch { host.replaceChildren(element('p', 'Organization is unavailable. You can still save the original.', 'small'), element('pre', text, 'raw')); }
+}
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
 let shelf, workspaceEpoch, fenced = false, resetting = false;
 let artifactTarget = null, artifactEpoch, artifactSaving = false, artifactSelection = null, artifactFocusPending = false;
@@ -31,7 +42,7 @@ let threadOpeningPending = false, openingViewToken = 0, renderedOpening = null;
 const openingPending = new Map(), openingErrors = new Map();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
 const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
-function setValue(id, text) { $(id).value = text; shadows.set(id, text); }
+function setValue(id, text) { $(id).value = text; shadows.set(id, text); if (id === 'capture-text') renderCapturePreview(); }
 function edited(id) { shadows.delete(id); }
 function status(id, text) { if ($(id)) $(id).textContent = text; }
 async function saveDraft(context, body, target, explicit = false) {
@@ -70,16 +81,16 @@ function showView(route, focus = true) {
   branchSelection = base === 'branch' ? encoded : null; branchFocusPending = !!branchSelection;
   const selectedBranch = branchSelection && state?.explorations?.find(b => b.id === branchSelection), branchSource = selectedBranch && state?.captures.find(c => c.id === selectedBranch.sourceId);
   const selectedFile = artifactSelection && state?.artifacts?.find(a => a.id === artifactSelection), fileSource = selectedFile && state?.captures.find(c => c.id === selectedFile.captureId);
-  currentView = base === 'person' ? 'spans' : base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
+  currentView = base === 'person' ? 'spans' : base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'fort', 'engine'].includes(base) ? base : 'home';
   try { activeSpan = base === 'person' ? spanKey('People') : (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
   const nextThread = base === 'branch' && branchSource ? branchSource.id : base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
   if (threadId !== nextThread) { renderedOpening = null; openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
-  for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
+  for (const name of ['home', 'spans', 'thread', 'fort', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
     if (button.dataset.view === (currentView === 'thread' ? 'spans' : currentView)) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
   if (location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
-  if (state) { renderSpans(); renderThread(); }
+  if (state) { renderSpans(); renderThread(); if (currentView === 'fort') archiveUI?.enter(base === 'fort' ? encoded ?? null : null); }
   if (focus) { $('main').focus(); scrollTo(0, 0); }
   focusArtifact(); focusBranch(); if (personSelection) peopleUI?.focus(personSelection);
   if (base === 'branch' && !selectedBranch) notice('This branch is unavailable in the active workspace. Its raw copy may be in Engine Room recovery or a backup.', true);
@@ -114,7 +125,7 @@ function render() {
   $('capture-span').replaceChildren(...(state.spans ?? []).map(span => { const option = element('option', span.name); option.value = span.name; return option; }));
   if ([...$('capture-span').options].some(o => o.value === selected)) $('capture-span').value = selected;
   else $('capture-span').value = 'Unsorted';
-  renderSpans(); renderThread();
+  renderSpans(); renderThread(); archiveUI?.update();
 }
 const descriptions = {
   raw: 'A landing place for thoughts that don’t need a destination yet.',
@@ -781,7 +792,7 @@ document.addEventListener('click', event => { const link = event.target.closest?
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
 addEventListener('hashchange', () => showView(routeFromHash()));
 document.querySelectorAll('[data-close]').forEach(button => button.onclick = () => $(button.dataset.close).close());
-function openCapture(destination) { if (destination && !$('capture-text').value) $('capture-span').value = destination; $('capture-dialog').showModal(); $('capture-text').focus(); }
+function openCapture(destination) { if (destination && !$('capture-text').value) $('capture-span').value = destination; renderCapturePreview(); $('capture-dialog').showModal(); $('capture-text').focus(); }
 $('capture-open').onclick = () => openCapture();
 $('post-to-span').onclick = () => openCapture(state.spans.find(s => s.id === activeSpan)?.name);
 $('back-spans').onclick = () => showView('spans');
@@ -799,7 +810,8 @@ $('span-form').onsubmit = async event => {
     try { await refreshed(); openSpan(result.span.id); } catch (e) { notice(`Attention Span created, but the view could not refresh: ${e.message}`, true); }
   } catch (error) { status('span-error', error.message); } finally { $('save-span').disabled = false; }
 };
-$('capture-text').oninput = () => { edited('capture-text'); persistDraft(true); };
+$('capture-text').oninput = () => { edited('capture-text'); persistDraft(true); renderCapturePreview(); };
+$('capture-ef').onclick = () => setEF(!efOn);
 $('capture-span').onchange = () => persistDraft(true);
 $('capture-dialog').addEventListener('close', () => { if (value('capture-text')) persistDraft(); });
 addEventListener('pagehide', () => { if (value('capture-text')) persistDraft(); });
@@ -858,6 +870,7 @@ async function replaceDemo(samples) {
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
     for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name', 'explore-text', 'distill-text', 'move-name', 'move-prompt', 'branch-note']) $(id).value = '';
+    renderCapturePreview();
     for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
@@ -899,6 +912,7 @@ function recoverLegacyCapture() {
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
 }
 peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
+archiveUI = createArchiveUI({getState:()=>state,getEpoch:()=>workspaceEpoch,element,organized,openSource,openThread,downloadText,getEF:()=>efOn,setEF});
 try {
   store = createStore(); await store.seed(); await refreshed(); workspaceEpoch = (await store.health()).epoch;
   try {
