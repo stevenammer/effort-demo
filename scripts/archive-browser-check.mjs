@@ -81,7 +81,7 @@ try {
       await page.getByRole('button',{name:'Close capture',exact:true}).click();
     }
     await page.locator('[data-view="engine"]').click();page.once('dialog',d=>d.accept());await page.locator('#reset').click();
-    await page.getByText('Browser demo cleared. Your private EFFORT app is separate.',{exact:true}).waitFor();
+    await page.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.',{exact:true}).waitFor();
     assert.equal(await page.locator('#fort-entries pre').count(),0);assert.equal(await page.locator('#capture-preview pre').count(),0);
     await page.locator('[data-view="fort"]').click();await page.getByText('No saved originals yet.',{exact:true}).waitFor();
     if(width===1440){

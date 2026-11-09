@@ -6,7 +6,7 @@ import { createStore, sha256, validateState } from '../public/store.js';
 // Inspired by Logseq's importer regression corpus and export→paste report:
 // https://github.com/logseq/logseq/blob/master/docs/og_import_graph_cases.md
 // https://github.com/logseq/db-test/issues/1445
-// These are EFFORT-specific proposed regression cases, not claims about EFFORT.
+// These are EFFORT-specific proposed regression cases, not claims about E.F.F.O.R.T.
 
 const fixedTime = '2026-11-08T16:00:00.000Z';
 const makeCapture = async (id, text, span = 'Learning', parentId = undefined) => ({
@@ -89,7 +89,7 @@ test('unsupported or corrupted payloads fail validation before any workspace mut
   const original = await store.exportData();
   const payload = JSON.parse(original).payload;
   const malformed = [
-    ['unsupported format', { ...payload, surprise: true }, /supported EFFORT/i],
+    ['unsupported format', { ...payload, surprise: true }, /supported E.F.F.O.R.T./i],
     ['duplicate IDs', { ...payload, captures: [...payload.captures, payload.captures[0]] }, /duplicate capture IDs/i],
     ['bad capture payload', { ...payload, captures: [{ ...payload.captures[0], text: '\ud800' }] }, /invalid capture format/i],
   ];

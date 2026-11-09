@@ -1,4 +1,4 @@
-# EFFORT continuation checkpoint, November 9, 2026
+# E.F.F.O.R.T. continuation checkpoint, November 9, 2026
 
 ## Start here
 
@@ -6,7 +6,7 @@ The public demo is live at https://stevenammer.github.io/effort-demo/.
 
 Published `main` runtime is **4d65061**. Exact correction/transcript proposals join separate source revisions, FORT/live EF, People, opening context, thinking, connected files and exploration proposals. Schema11 / backup13 imports1..12. The active checkout is **feature/thread-review-20261109**, an unpublished schema15/backup17 continuation. Inspect actual Git state before resuming.
 
-The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
+The ongoing objective is to bring E.F.F.O.R.T. close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
 ## Earlier safe-exploration release
 
@@ -104,7 +104,7 @@ Next: prepare exact corrected-source proposals with stable revision ID/hash prov
 
 Developed on **feature/revision-proposals-20261109**, based on published7f1587a, and released on main as **4d65061**. Exact correction/transcript proposals now carry canonical revision ID/hash lineage and a sealed immutable reply, with a second explicit quote choice. History pagination exposes older exact revisions. Schema11/backup13 imports1..12, fencing older strict capture readers. See REVISION_PROPOSALS.md.
 
-Parent235/235 tests and29-module syntax pass. The new browser suite passes at1440/390/320, including distinct transcript provenance, old-history preparation, idempotent retry, unchanged NOW after new edits, honest damaged provenance, backup/restore/offline and asynchronous navigation/reset cases. All existing workflow browser regressions pass. After the malformed-metadata fix, revision proposals, core, offline/update and actual published7f1587a DB10-to-DB11 upgrade passed again. The upgrade preserves source revisions, thinking histories, files, People/contact records and separate tab drafts with late stale-tab recovery. A fresh clone of4d65061 passes offline install,235 tests,29-module syntax, shell verification and the109-file/history publication guard. GitHub checks42573760075 and Pages42573759854 succeeded. Hosted revision-proposal/fault and full core acceptance pass1440/390/320, with no page errors or outside requests. The hosted manifest matches tested bytes exactly (SHA-2567520f88094a6557b810e6e35d1f28a484d97e07f014dc93989a1730c2806a8b2). Hosted hostile-reader recheck also passes1440/390/320 with no page errors or outside requests. All release gates for this slice are complete. Neutral THREAD review and bounded assistance remain next in the full native map; See / Spec / Send stays after complete EFFORT parity and red-teaming.
+Parent235/235 tests and29-module syntax pass. The new browser suite passes at1440/390/320, including distinct transcript provenance, old-history preparation, idempotent retry, unchanged NOW after new edits, honest damaged provenance, backup/restore/offline and asynchronous navigation/reset cases. All existing workflow browser regressions pass. After the malformed-metadata fix, revision proposals, core, offline/update and actual published7f1587a DB10-to-DB11 upgrade passed again. The upgrade preserves source revisions, thinking histories, files, People/contact records and separate tab drafts with late stale-tab recovery. A fresh clone of4d65061 passes offline install,235 tests,29-module syntax, shell verification and the109-file/history publication guard. GitHub checks42573760075 and Pages42573759854 succeeded. Hosted revision-proposal/fault and full core acceptance pass1440/390/320, with no page errors or outside requests. The hosted manifest matches tested bytes exactly (SHA-2567520f88094a6557b810e6e35d1f28a484d97e07f014dc93989a1730c2806a8b2). Hosted hostile-reader recheck also passes1440/390/320 with no page errors or outside requests. All release gates for this slice are complete. Neutral THREAD review and bounded assistance remain next in the full native map; See / Spec / Send stays after complete E.F.F.O.R.T. parity and red-teaming.
 
 ## Active continuation: THREAD review and helper runtime
 

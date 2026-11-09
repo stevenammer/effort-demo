@@ -1,4 +1,4 @@
-# EFFORT, a public walkthrough
+# E.F.F.O.R.T., a public walkthrough
 
 Development checkpoint: [current release, verified workflows and remaining work](docs/CURRENT_STATE.md). The full product goal remains open; the checkpoint distinguishes verified behavior from remaining work.
 
@@ -10,7 +10,7 @@ This is an interactive browser demonstration of E.F.F.O.R.T. (Executive Function
 
 The walkthrough is separate from the private app and its data. It isn't a replacement phone app, a connected agent service, or an export of someone's personal workspace.
 
-![EFFORT browser walkthrough, using fictional sample data](docs/screens/home-desktop.png)
+![E.F.F.O.R.T. browser walkthrough, using fictional sample data](docs/screens/home-desktop.png)
 
 ## Try it locally
 

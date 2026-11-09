@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="An interactive, synthetic walkthrough of EFFORT: capture a thought, keep the original, and choose one next step.">
+  <meta name="description" content="An interactive, synthetic walkthrough of E.F.F.O.R.T.: capture a thought, keep the original, and choose one next step.">
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>EFFORT · A little less to hold in your head</title>
+  <title>E.F.F.O.R.T. · A little less to hold in your head</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>
 </head>
 <body>
@@ -15,16 +15,16 @@
     <aside class="rail" aria-label="Demo navigation">
       <a href="#home" class="brand"><span class="mark" aria-hidden="true">e.</span><span>E.F.F.O.R.T.<small>Executive Function For<br>Organizing Random Thoughts</small></span></a>
       <p class="rail-label">A little less to hold<br>in your head.</p>
-      <nav aria-label="EFFORT views">
+      <nav aria-label="E.F.F.O.R.T. views">
         <button data-view="home" aria-current="page"><span>01</span> One thing, for now</button>
         <button data-view="spans"><span>02</span> Attention Spans</button>
         <button data-view="fort"><span>03</span> FORT / EF</button>
         <button data-view="engine"><span>04</span> Engine Room</button>
       </nav>
-      <div class="rail-foot"><span class="dot"></span> Interactive demo<br><small>Synthetic examples. Your phone and private EFFORT data aren't connected.</small></div>
+      <div class="rail-foot"><span class="dot"></span> Interactive demo<br><small>Synthetic examples. Your phone and private E.F.F.O.R.T. data aren't connected.</small></div>
     </aside>
     <div class="content">
-      <header class="topbar"><span class="eyebrow">EFFORT / PUBLIC WALKTHROUGH</span><button id="capture-open" class="primary" disabled>+ Capture a thought</button></header>
+      <header class="topbar"><span class="eyebrow">E.F.F.O.R.T. / PUBLIC WALKTHROUGH</span><button id="capture-open" class="primary" disabled>+ Capture a thought</button></header>
       <main id="main" tabindex="-1" inert aria-busy="true">
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
         <section id="view-home">
@@ -65,7 +65,7 @@
           <article id="helper-connection" class="panel"></article>
           <details id="revision-directory" class="panel"><summary>Separate source correction and transcript histories</summary><p class="small">These are separate records. Originals and existing commitments stay intact. Supplied transcripts do not verify audio.</p><div id="revision-directory-items"></div></details>
           <details id="draft-recovery" class="panel"><summary>Draft recovery</summary><p id="draft-recovery-status" class="small"></p><div id="draft-recovery-items"></div></details>
-          <div class="engine-grid"><article class="panel"><span class="eyebrow">THIS WALKTHROUGH</span><h2>Actual code.<br>Fabricated examples.</h2><p>The organiser uses an extract of EFFORT's existing deterministic classification code. It groups exact quotes. It doesn't rewrite them or call an AI model.</p><a href="https://github.com/stevenammer/effort-demo/blob/main/SOURCE.md" target="_blank" rel="noopener noreferrer">Source and demo boundaries ↗</a></article><article class="panel"><span class="eyebrow">BROWSER ONLY</span><h2 id="storage-count">Checking storage…</h2><p>Captures stay in this browser's storage. There are no accounts or trackers. Optional helper requests go only to the configured loopback companion after your explicit approval. Use fictional text. Anyone with access to this browser profile can read its demo data.</p><p class="small">This is a browser demonstration, not the private Android app, its SQLite database, or a native phone backup.</p></article></div>
+          <div class="engine-grid"><article class="panel"><span class="eyebrow">THIS WALKTHROUGH</span><h2>Actual code.<br>Fabricated examples.</h2><p>The organiser uses an extract of E.F.F.O.R.T.'s existing deterministic classification code. It groups exact quotes. It doesn't rewrite them or call an AI model.</p><a href="https://github.com/stevenammer/effort-demo/blob/main/SOURCE.md" target="_blank" rel="noopener noreferrer">Source and demo boundaries ↗</a></article><article class="panel"><span class="eyebrow">BROWSER ONLY</span><h2 id="storage-count">Checking storage…</h2><p>Captures stay in this browser's storage. There are no accounts or trackers. Optional helper requests go only to the configured loopback companion after your explicit approval. Use fictional text. Anyone with access to this browser profile can read its demo data.</p><p class="small">This is a browser demonstration, not the private Android app, its SQLite database, or a native phone backup.</p></article></div>
           <article class="panel backup"><div><span class="eyebrow">AN EXIT DOOR</span><h2>Take the original with you.</h2><p>Download a checksum-checked demo backup. Restoring adds missing captures, preserves current originals and refuses conflicting records.</p></div><div class="actions"><button id="download" class="primary">Download demo backup</button><button id="restore-open" class="quiet">Restore demo backup</button><input id="restore-file" type="file" accept="application/json,.json" hidden></div></article>
           <article id="recovery-panel" class="panel" hidden><span class="eyebrow">RECOVERY, WITHOUT ERASURE</span><h2>Keep the damaged copy, too.</h2><p id="recovery-status" role="status"></p><p>Download a demo backup to keep the recovery records along with your verified originals. Raw copies below are preserved as evidence, not promoted as verified text.</p><div id="recovery-items"></div></article>
           <details class="panel"><summary>What is deliberately outside this demo?</summary><p>Voice capture, repository execution, the private backend, notifications and native phone backup/restore. Optional text-only helpers use your configured self-hosted companion; no model or companion is bundled into the hosted page. Passing the browser tests doesn't establish an installed Android build or a production service.</p><p><a href="https://github.com/stevenammer/effort-demo/blob/main/docs/EXPLORATION.md" target="_blank" rel="noopener noreferrer">Why exploration works this way ↗</a></p><p>Classification is heuristic and can be wrong. A category is a view, not a decision about your intent.</p><p id="lock-note" class="small"></p></details>

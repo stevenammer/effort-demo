@@ -33,7 +33,7 @@ try {
   await clone.close();
   // Reset in a different tab leaves visible writing alone, but blocks passive resurrection.
   await b.getByRole('button', {name:'Close capture',exact:true}).click(); await b.locator('[data-view="engine"]').click();
-  b.once('dialog', d=>d.accept()); await b.locator('#reset').click(); await b.getByText('Browser demo cleared. Your private EFFORT app is separate.',{exact:true}).waitFor();
+  b.once('dialog', d=>d.accept()); await b.locator('#reset').click(); await b.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.',{exact:true}).waitFor();
   await a.locator('#draft-state').getByText('Workspace changed in another tab.',{exact:false}).waitFor();
   assert.equal(await a.locator('#capture-text').inputValue(), '  First tab exact draft.\n😀  ');
   await a.getByRole('button',{name:'Close capture',exact:true}).click(); assert.equal((await state(b)).drafts.length,0);
@@ -48,7 +48,7 @@ try {
   await replyPage.locator('#reply-text').fill('Reply retained across reset.'); await replyPage.locator('#reply-draft-state').getByText('Draft kept in this browser.',{exact:true}).waitFor();
   const saved = await resetPage.evaluate(async()=>{ const {createStore}=await import('./store.js'); const s=createStore(); try{return await s.exportData();}finally{await s.close();} });
   await resetPage.locator('[data-view="engine"]').click(); resetPage.once('dialog',dialog=>dialog.accept()); await resetPage.locator('#reset').click();
-  await resetPage.getByText('Browser demo cleared. Your private EFFORT app is separate.',{exact:true}).waitFor();
+  await resetPage.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.',{exact:true}).waitFor();
   await replyPage.locator('#reply-draft-state').getByText('Workspace changed',{exact:false}).waitFor();
   await replyPage.locator('[data-view="home"]').click();
   await resetPage.evaluate(async raw=>{ const {createStore}=await import('./store.js'); const s=createStore(); try{await s.restore(raw);}finally{await s.close();} },saved);

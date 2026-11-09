@@ -1,4 +1,4 @@
-# Public EFFORT parity and acceptance
+# Public E.F.F.O.R.T. parity and acceptance
 
 This is the delivery map for the owner's public-centerpiece goal. It is not a list of features claimed complete. The existing Android implementation and its decisions are the reference; public examples contain no private workspace data or persona names.
 

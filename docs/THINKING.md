@@ -2,7 +2,7 @@
 
 This slice is released on `main`, with implementation history on `feature/thinking-continuity-20261108`. Local and hosted thinking acceptance pass. See CURRENT_STATE.md for verified evidence and remaining checks.
 
-A thinking move is an optional, editable prompt. It is not an assessment of a person. The nine generic suggestions come from EFFORT's existing move library. People can change them, turn them off or add their own. No helper or provider runs when choosing a move.
+A thinking move is an optional, editable prompt. It is not an assessment of a person. The nine generic suggestions come from E.F.F.O.R.T.'s existing move library. People can change them, turn them off or add their own. No helper or provider runs when choosing a move.
 
 Each saved branch retains its exact selected name, prompt and definition revision. Editing or disabling a move later leaves that snapshot intact. A historical prompt remains readable even if its definition needs recovery. Only available definitions are offered for new selection.
 

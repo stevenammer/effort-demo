@@ -20,8 +20,8 @@ export function openDatabase({ factory = globalThis.indexedDB, name = DB_NAME } 
           req.result.createObjectStore(table, { keyPath: table === 'meta' || table === 'drafts' ? 'key' : 'id' });
         }
       };
-      req.onblocked = () => { settled = true; opening = null; reject(Error('Another EFFORT tab needs to close before the local database can upgrade. Your existing data is unchanged.')); };
-      req.onerror = () => { opening = null; reject(req.error?.name === 'VersionError' ? Error('This tab is older than the saved EFFORT workspace. Reload to use the newer version. Your data is unchanged.') : req.error || Error('The local database could not open.')); };
+      req.onblocked = () => { settled = true; opening = null; reject(Error('Another E.F.F.O.R.T. tab needs to close before the local database can upgrade. Your existing data is unchanged.')); };
+      req.onerror = () => { opening = null; reject(req.error?.name === 'VersionError' ? Error('This tab is older than the saved E.F.F.O.R.T. workspace. Reload to use the newer version. Your data is unchanged.') : req.error || Error('The local database could not open.')); };
       req.onsuccess = () => {
         const db = req.result;
         if (settled) { db.close(); return; }

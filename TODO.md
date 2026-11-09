@@ -1,8 +1,8 @@
-# EFFORT public centerpiece
+# E.F.F.O.R.T. public centerpiece
 
 Read [the current continuation checkpoint](docs/CURRENT_STATE.md) first. The released runtime, actual verification and remaining full-map work are distinguished there.
 
-Outcome: bring the public EFFORT experience up to the real app's working model and improve its robustness and presentation. A small classified-text demo does not satisfy this goal.
+Outcome: bring the public E.F.F.O.R.T. experience up to the real app's working model and improve its robustness and presentation. A small classified-text demo does not satisfy this goal.
 
 - [ ] Durable capture: per-record transactional storage, nondestructive v1 migration, quarantine and recovery without blocking new captures, drafts and verified backups.
 - [ ] Real Attention Spans: named searchable directory, chronological posts, nested replies, source links, attachments/artifacts, permalinks and return paths.

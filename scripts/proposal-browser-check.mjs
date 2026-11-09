@@ -231,7 +231,7 @@ try {
 
   // Same workspace reset and restore preserves the proposal and source lineage.
   page.once('dialog', dialog => dialog.accept()); await page.locator('#reset').click();
-  await page.getByText('Browser demo cleared. Your private EFFORT app is separate.', { exact: true }).waitFor();
+  await page.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.', { exact: true }).waitFor();
   await page.locator('[data-view="engine"]').click(); await restoreFile(page, backup);
   await page.goto(`${base}/public/#thread/${sourceId}`); await page.locator('#thread-post h1').waitFor();
   const restoredReply = page.locator('#thread-replies .thread-reply').filter({ hasText: distillationText });
@@ -293,7 +293,7 @@ try {
   const resetTab = await staleContext.newPage(); resetTab.setDefaultTimeout(10000); resetTab.on('pageerror', error => errors.push(error.message));
   await resetTab.goto(`${base}/public/`); await resetTab.locator('[data-view="engine"]').click();
   resetTab.once('dialog', dialog => dialog.accept()); await resetTab.locator('#reset').click();
-  await resetTab.getByText('Browser demo cleared. Your private EFFORT app is separate.', { exact: true }).waitFor();
+  await resetTab.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.', { exact: true }).waitFor();
   await stalePage.evaluate(() => { window.__releaseProposalDigest(); });
   await stalePage.waitForFunction(() => document.querySelector('#notice').classList.contains('error') && /workspace changed/i.test(document.querySelector('#notice').textContent));
   assert.equal(await stalePage.locator('#source-dialog').evaluate(dialog => dialog.open), false, 'stale action must not open a proposal after reset');

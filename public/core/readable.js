@@ -1,4 +1,4 @@
-// Display parser extracted from EFFORT native source; see SOURCE.md.
+// Display parser extracted from E.F.F.O.R.T. native source; see SOURCE.md.
 
 // This is deliberately a display-only, lossless-ish reader. It never changes the
 // stored string: callers keep the original and render these tokens instead.

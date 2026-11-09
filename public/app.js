@@ -351,7 +351,7 @@ function renderMoves(body) {
     for (const branch of examples) { const row = element('p'); row.append(branchLink(branch)); evidence.append(row); } card.append(evidence);
     const history = element('details', undefined, 'move-history'); history.append(element('summary', `Saved revisions (${move.history.length})`));
     for (const row of move.history.slice(-10)) history.append(element('p', `${formatDate(row.at)} · ${row.name} · ${row.enabled ? 'Offered' : 'Turned off'}`, 'small'), element('pre', row.prompt, 'raw'));
-    if (!move.history.length) history.append(element('p', move.recovery ? 'Prior definitions are preserved as raw recovery records.' : 'A suggested tool from EFFORT’s existing move library. It hasn’t been edited here.', 'small'));
+    if (!move.history.length) history.append(element('p', move.recovery ? 'Prior definitions are preserved as raw recovery records.' : 'A suggested tool from E.F.F.O.R.T.’s existing move library. It hasn’t been edited here.', 'small'));
     if (move.history.length > 10) history.append(element('p', 'Latest ten revisions shown. The full history is downloadable and included in the workspace backup.', 'small'));
     if (move.history.length) { const download = element('button', 'Download move history', 'text-button'); download.onclick = () => downloadText(JSON.stringify(move.history, null, 2), `effort-move-${move.id}-history.json`); history.append(download); } card.append(history); body.append(card);
   }
@@ -940,7 +940,7 @@ async function replaceDemo(samples) {
     for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog', 'artifact-dialog', 'move-dialog', 'branch-dialog']) if ($(id).open) $(id).close();
     workspaceEpoch = (await store.health()).epoch; fenced = false;
     try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }
-    await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but draft storage or cleanup failed. Check Engine Room before writing.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private EFFORT app is separate.', !!draftCleanupError);
+    await refreshed(); showView('home'); notice(draftCleanupError ? 'The workspace changed, but draft storage or cleanup failed. Check Engine Room before writing.' : samples ? 'Fictional examples loaded.' : 'Browser demo cleared. Your private E.F.F.O.R.T. app is separate.', !!draftCleanupError);
   } catch (error) { fail(error); } finally { resetting = false; }
 }
 $('sample-reset').onclick = () => replaceDemo(true); $('reset').onclick = () => replaceDemo(false);

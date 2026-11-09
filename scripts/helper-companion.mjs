@@ -61,7 +61,7 @@ export function createHelperCompanion({model,backend='http://127.0.0.1:11434',to
         if(input.protocol==='effort-helper-v1')return send(200,{protocol:'effort-helper-v1',attemptId:input.attemptId,route,text:result.text});
         return send(200,{protocol:'effort-helper-v2',attemptId:input.attemptId,route,text:result.text,result,rawResponse,receipt});
       }finally{busy=false;}
-    }catch(error){const rejected=error instanceof IntegrityError||error instanceof SyntaxError;return send(controller.signal.aborted?504:rejected?422:502,{error:error instanceof IntegrityError?error.message:error instanceof SyntaxError?'The model response was not valid structured JSON. Your source writing is kept.':'The self-hosted helper could not complete. Source writing remains in EFFORT.'});}finally{clearTimeout(timer);}
+    }catch(error){const rejected=error instanceof IntegrityError||error instanceof SyntaxError;return send(controller.signal.aborted?504:rejected?422:502,{error:error instanceof IntegrityError?error.message:error instanceof SyntaxError?'The model response was not valid structured JSON. Your source writing is kept.':'The self-hosted helper could not complete. Source writing remains in E.F.F.O.R.T.'});}finally{clearTimeout(timer);}
   };
   const server=tls?https.createServer({key:tls.key,cert:tls.cert,minVersion:'TLSv1.2'},handle):http.createServer(handle);
   server.requestTimeout=timeoutMs+1000;server.headersTimeout=Math.min(5000,server.requestTimeout);server.maxConnections=8;
@@ -76,5 +76,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   if(!isIP(listen)||!tls&&listen!=='127.0.0.1')throw Error('A non-loopback listener requires explicit HTTPS configuration.');
   const engine=process.env.EFFORT_HELPER_ENGINE??'ollama',withLease=process.env.EFFORT_HELPER_LOCK_FILE?fileGenerationLease(process.env.EFFORT_HELPER_LOCK_FILE):process.env.EFFORT_HELPER_DEDICATED==='1'?async(run,signal)=>{if(signal?.aborted)throw signal.reason;return run(signal);}:null;
   const server=createHelperCompanion({publicOrigin,tls,engine,withLease,backendToken:process.env.EFFORT_HELPER_BACKEND_TOKEN??null,model:process.env.EFFORT_HELPER_MODEL,backend:process.env.EFFORT_HELPER_BACKEND??'http://127.0.0.1:11434',token,contextTokens:Number(process.env.EFFORT_HELPER_CONTEXT??8192),origins:(process.env.EFFORT_HELPER_ORIGINS??'https://stevenammer.github.io').split(',')});
-  server.listen(port,listen,()=>{console.log(`EFFORT companion: ${publicOrigin??`http://127.0.0.1:${port}`} \nSession token (keep private): ${token}\nNo model runs until you explicitly approve and start a THREAD invitation.`);});
+  server.listen(port,listen,()=>{console.log(`E.F.F.O.R.T. companion: ${publicOrigin??`http://127.0.0.1:${port}`} \nSession token (keep private): ${token}\nNo model runs until you explicitly approve and start a THREAD invitation.`);});
 }

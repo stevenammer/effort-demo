@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * EFFORT's existing deterministic classifier, adapted for a public demo.
+ * E.F.F.O.R.T.'s existing deterministic classifier, adapted for a public demo.
  * Every fragment keeps an exact source quote and UTF-16 start/end offsets.
  * No model, network request or source rewrite happens here.
  * Public role aliases replace private names. See SOURCE.md.

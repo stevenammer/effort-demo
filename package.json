@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "description": "A synthetic browser walkthrough of EFFORT, using its existing deterministic organisation code.",
+  "description": "A synthetic browser walkthrough of E.F.F.O.R.T., using its existing deterministic organisation code.",
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "test": "node --test",

@@ -31,5 +31,5 @@ export function createDemoServer() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT ?? 4174);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw Error('Choose a valid local PORT.');
-  const server = createDemoServer(); server.listen(port, '127.0.0.1', () => console.log(`EFFORT demo: http://127.0.0.1:${port}/public/`));
+  const server = createDemoServer(); server.listen(port, '127.0.0.1', () => console.log(`E.F.F.O.R.T. demo: http://127.0.0.1:${port}/public/`));
 }

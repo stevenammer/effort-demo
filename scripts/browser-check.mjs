@@ -48,7 +48,7 @@ try {
     const exported = await readFile(await download.path(), 'utf8'); const bundle = JSON.parse(exported);
     assert.equal(bundle.payload.captures.at(-1).text, original);
     page.once('dialog', d => d.accept()); await page.locator('#reset').click();
-    await page.getByText('Browser demo cleared. Your private EFFORT app is separate.', { exact: true }).waitFor();
+    await page.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.', { exact: true }).waitFor();
     await page.locator('[data-view="engine"]').click();
     const upload = text => page.locator('#restore-file').setInputFiles({ name: 'demo.json', mimeType: 'application/json', buffer: Buffer.from(text) });
     await upload(exported); await page.getByText('Restore verified. 3 missing captures added; existing originals kept.', { exact: true }).waitFor();
@@ -119,7 +119,7 @@ try {
     const threadedBackup = await readFile(await threadDownload.path(), 'utf8');
     assert.equal(JSON.parse(threadedBackup).payload.spans.some(s => s.name === 'Workshop planning'), true);
     page.once('dialog', d => d.accept()); await page.locator('#reset').click();
-    await page.getByText('Browser demo cleared. Your private EFFORT app is separate.', { exact: true }).waitFor();
+    await page.getByText('Browser demo cleared. Your private E.F.F.O.R.T. app is separate.', { exact: true }).waitFor();
     await page.locator('[data-view="engine"]').click(); await upload(threadedBackup);
     await page.getByText('Restore verified. 5 missing captures added; existing originals kept.', { exact: true }).waitFor();
     await page.locator('[data-view="spans"]').first().click(); await page.locator('#span-search').fill('');
