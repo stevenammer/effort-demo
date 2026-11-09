@@ -43,7 +43,7 @@ function history(events,reviewId,role) {
 }
 export function helperState(state,reviewId,role) {
   const rows=history(state.helperEvents??[],reviewId,role),ids=new Set(rows.map(e=>e.id));
-  const unknown=(state.recovery??[]).some(r=>{if(r.source!=='helperEvents'&&r.source!=='threadReviews')return false;try{const x=JSON.parse(r.raw);return r.source==='threadReviews'?x.id===reviewId:x.reviewId===reviewId&&x.role===role&&!ids.has(x.id);}catch{return false;}});
+  const unknown=(state.recovery??[]).some(r=>{if(r.source!=='helperEvents'&&r.source!=='threadReviews')return false;try{const x=JSON.parse(r.raw);return r.source==='threadReviews'?x.id===reviewId&&!(state.threadReviews??[]).some(review=>review.id===reviewId):x.reviewId===reviewId&&x.role===role&&!ids.has(x.id);}catch{return false;}});
   return {status:unknown?'recovery':rows.at(-1)?.status??'queued',latestId:rows.at(-1)?.id??null,attempt:rows.at(-1)?.attempt??0,history:rows,latest:rows.at(-1)??null};
 }
 export function reviewContextStatus(review,state) {

@@ -1,3 +1,4 @@
+import { createHelperProposals } from './helper-proposals.js';
 import { createThreadReview, validateReviewState, REVIEW_TABLES } from './thread-review.js';
 import { createRevisionProposals } from './revision-proposals.js';
 import { createRevisions, validateRevisionState, REVISION_TABLE } from './revisions.js';
@@ -199,7 +200,7 @@ export function createStore(options = {}) {
   async function read({ includeDrafts = true, requireArtifacts = false, requireThinking = false, requireOpened = false, requirePeople = false, requireRevisions = false, requireReviews = false, integrityRetry = false } = {}) {
     await recover(); await ensureSpans(); await continuity.repair(); await exploration.repair(); await recoverProposalProvenance();
     let fileError, thinkingError, openedError, peopleError, revisionError, reviewError;
-    try { await reviews.repair(); } catch (error) { reviewError = error; }
+    try { await reviews.repair(); await helperProposals.repair(); } catch (error) { reviewError = error; }
     try { await revisions.repair(); await revisionProposals.repair(); } catch (error) { revisionError = error; }
     try { await people.repair(); } catch (error) { peopleError = error; }
     try { await opened.repair(); } catch (error) { openedError = error; }
@@ -227,6 +228,7 @@ export function createStore(options = {}) {
           fileError ??= unavailable; thinkingError ??= unavailable; openedError ??= unavailable; peopleError ??= unavailable; revisionError ??= unavailable; reviewError ??= unavailable; continue;
         }
         throw error; }
+      if (reviewError) complete.reviewWarning = `THREAD history is unavailable: ${reviewError.message}`;
       if (revisionError) complete.revisionWarning = `Source revision history is unavailable: ${revisionError.message}`;
       try {
         for (const capture of complete.captures) await validateCapture(capture);
@@ -465,12 +467,13 @@ export function createStore(options = {}) {
   const continuity = createContinuity({ db, ready, prepare: recover, notify, read: () => read({ includeDrafts: false }), recoveryRecord });
   const exploration = createExploration({ db, ready, notify, recoveryRecord, ensureCapacity });
   const artifacts = createArtifacts({ db, ready, notify, recoveryRecord });
+  const helperProposals = createHelperProposals({ db, ready, notify, recoveryRecord, ensureCapacity });
   const reviews = createThreadReview({ db, ready, notify, recoveryRecord, validateCapture });
   const revisionProposals = createRevisionProposals({ db, ready, notify, recoveryRecord, ensureCapacity });
   const revisions = createRevisions({ db, ready, notify, recoveryRecord });
   const people = createPeople({ db, ready, notify, recoveryRecord });
   const opened = createOpened({ db, ready, notify, recoveryRecord });
   const thinking = createThinking({ db, ready, notify, recoveryRecord });
-  return { ...continuity, createThreadReview: reviews.create, transitionHelper: reviews.transition, prepareRevisionProposal: revisionProposals.prepare, reviseSource: revisions.revise, savePerson: people.savePerson, logContact: people.logContact, markOpened: opened.markOpened, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
+  return { ...continuity, prepareHelperProposal: helperProposals.prepare, createThreadReview: reviews.create, transitionHelper: reviews.transition, prepareRevisionProposal: revisionProposals.prepare, reviseSource: revisions.revise, savePerson: people.savePerson, logContact: people.logContact, markOpened: opened.markOpened, setBranchStatus: thinking.setBranchStatus, saveMove: thinking.saveMove, attach: artifacts.attach, explore: exploration.explore, distill: exploration.distill, prepareProposal: exploration.prepareProposal, read, capture, createSpan, reset, exportData, restore, seed, health, close,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

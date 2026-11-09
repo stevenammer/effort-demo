@@ -49,6 +49,12 @@ An accepted answer with a lost first readback was falsely described as unapplied
 
 Three-width browser acceptance passes for saved-before-egress, exact selection, explicit role starts/stops, literal hostile output, exact downloads, request draft reload, backup/reset/restore and offline reading. The local preview had a stricter legacy CSP header than the page; both now permit only same-origin/loopback helper connections. Expanded reading continuity exposed an overflowing original checksum on phones; the source checksum now wraps. General connection/date/permission/model quality and wider event-sequence campaigns remain.
 
+## Exact helper proposal continuation, not yet released
+
+Source/review identity is preserved through exact answer eventID+hash, which already binds the approved review hash. New helper proposal acceptance executes own-copy quote ranges, deduplicated retries/restoration, primary capacity refusal and portable recovery. The Engine Room fixture pages52 requests and finds the exact old request by ID; source quarantine leaves intact approvals and model outputs accessible without a new call.
+
+Four regressions changed the implementation: restored exact reviews stayed unknown forever (failing Node repro /tmp/effort-helper-review-restoration-repro.log); missing secondary context trapped workspace reading (/tmp/effort-helper-secondary-source-repro.log); live helper/revision outages left stale verified provenance while reading (/tmp/effort-helper-provenance-outage-repro.log and /tmp/effort-revision-live-provenance-repro.log); primary-source changes didn't refresh Engine Room orphan rows. Fixes preserve damaged raw copies, degrade provenance, retain primary writing/backup and patch only provenance alongside open exact text. Parent268 tests and three-width new browser checks pass. Broader workflow/fresh/release evidence remains in CURRENT_STATE.md.
+
 ## Further campaigns, still required
 
 The FORT slice additionally executes a real browser1,000-original fixture with50 rendered cards, refused over-capacity capture with exact draft retention, invalidated-source removal and clearing hidden archive/draft projections on reset. Exact source offsets and whole-workspace entity limits still require the wider audit.

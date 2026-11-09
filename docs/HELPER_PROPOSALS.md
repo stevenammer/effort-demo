@@ -1,0 +1,25 @@
+# Exact helper proposals and source recovery
+
+Local implementation on feature/thread-review-20261109. Main remains the prior published release until the complete THREAD/helper slice clears its release gates. See CURRENT_STATE.md and THREAD_REVIEW.md.
+
+An explicitly selected saved helper answer can be prepared as an immutable reply proposal. It copies the entire exact answer, including original whitespace and CRLF, and preserves the source Attention Span and parent. This runs no model and changes no intent event or NOW. Selecting an exact quote from that new proposal is a second human action. Those offsets refer to the new proposal's own bytes, never the original source.
+
+The primary capture carries helperEventId, helperEventHash and a metadata seal. Its canonical ID derives from the exact answer ID/checksum, independent of reset epochs. The answer already binds the approved review checksum, role, model and attempt. Concurrent requests, accepted-write/readback retries and preparation after backup restoration reuse one accepted proposal. Mixed, undefined or substituted metadata refuses validation. Capacity refusal keeps all earlier writing and answers without pruning.
+
+New preparation requires the exact completed answer, a valid approved review/history and every selected primary source. Reading an already prepared proposal remains possible when optional helper storage or source lineage needs recovery. Its original view identifies model output separately, keeps the answer and approved review available as an exact lineage download, and distinguishes stored byte/link verification from factual truth, authorship or confidence. Reply bylines identify prepared helper proposals. No helper result creates a commitment, receipt or work-completion claim automatically.
+
+Damage to an original doesn't erase an intact answer or proposal. Missing answer/context links receive a portable derivation recovery copy. A missing secondary selected source degrades provenance instead of trapping primary capture or the complete backup. Validated restoration of the exact approved review resolves its byte links while retaining the damaged raw copy. Unknown optional storage doesn't manufacture damage records or silently omit data from backup.
+
+The Engine Room directory exposes intact approvals/answers even when their original is quarantined. It uses literal search and50-row paging, stable request/source IDs, exact downloads and explicit preparation only when its sources are available. Opening, searching or reading the directory never calls a helper. The directory updates when primary-source health changes. Model statements remain unverified.
+
+Live helper/revision storage outages downgrade their proposal provenance labels without replacing the open original text. Restoring storage updates the label again. A completed preparation preserves later navigation and doesn't reopen a dismissed source view. Reset epochs fence stale writes/results; pending-operation identities prevent an older completion from clearing newer pending work.
+
+Schema13 fences older strict primary readers. Backup15 imports1..14 and includes helper proposals, request/attempt histories, exact quote choices and recovery. A pre-proposal backup14 doesn't erase later writing or chosen work. This schema advance also covers people who inspected the earlier unpublished DB12 branch.
+
+## Executed acceptance
+
+Parent268/268 tests and34 browser/worker module syntax pass. Thirteen new helper-proposal storage cases cover exact choices, concurrent/restored retry, readback failure, damaged/deleted lineage, optional-store outage, malformed metadata, reset/hash refusal, damaged original, old14 restoration, exact review restoration, missing secondary sources and full primary capacity.
+
+Local helper-proposal browser acceptance passes1440/390/320, including literal hostile text, exact lineage download, separate quote choice, failed-readback retry, live outage/recovery with original DOM preservation, orphan inspection/downloads, backup15/reset/restore and offline reopening. The desktop directory fixture creates52 requests, pages beyond the first50 and finds the exact old request by ID. Deterministic preparation gates prove later navigation and reset retain authority. A separate revision-proposal live-outage test passes390/320/1440. All19 browser suites pass, including existing THREAD/HTTP companion, core and all prior workflows, plus the real published DB11-to13 update. Actual earlier-checkpoint7dacd91 DB12-to13 update also preserves approved reviews, attempt histories and an exact request draft. Fresh-checkout evidence is recorded in CURRENT_STATE.md as it finishes.
+
+This establishes neither actual-model quality nor complete native parity. Structured result/input attribution, cross-device configured routing, actual self-hosted inference and the remaining full map still need implementation/evidence before completion.

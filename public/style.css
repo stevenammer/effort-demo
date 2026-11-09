@@ -920,3 +920,7 @@ input[type=file] { max-width:100%; min-width:0; }
 #thread-review, .helper-reply { min-width:0; }
 .helper-reply .raw { max-height:22rem; overflow:auto; }
 #thread-review-dialog fieldset { min-inline-size:0; border:1px solid var(--line); margin:1rem 0; border-radius:8px; }
+
+.review-directory .raw { max-height:22rem; overflow:auto; }
+.review-directory p,.review-directory summary,.helper-directory-answer { overflow-wrap:anywhere; min-width:0; }
+.helper-directory-answer { border-top:1px solid var(--line); padding-top:1rem; margin-top:1rem; }

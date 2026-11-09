@@ -1,3 +1,4 @@
+import { HELPER_ROLES, helperState } from './thread-review.js';
 import { createThreadReviewUI } from './thread-review-ui.js';
 import { createRevisionsUI } from './revisions-ui.js';
 import { createArchiveUI } from './archive-ui.js';
@@ -40,7 +41,7 @@ let navigationVersion = 0, explorationNavigation = 0, explorationRoute = 'home';
 let explorationDraft = null, distillationDraft = null, explorationSaving = false, distillationSaving = false, explorationLoading = false, distillationLoading = false;
 let moveEditing = null, moveEpoch, moveSaving = false, moveLoading = false, branchEditing = null, branchEpoch, branchSaving = false, branchLoading = false;
 let branchSelection = null, branchFocusPending = false;
-const proposalPending = new Set(), revisionPreparationPending = new Set();
+const proposalPending = new Set(), revisionPreparationPending = new Set(), helperPreparationPending = new Map();
 const revisionPreparationKey = (id,hash) => `${id}:${hash}`;
 let threadOpeningPending = false, openingViewToken = 0, renderedOpening = null;
 const openingPending = new Map(), openingErrors = new Map();
@@ -130,7 +131,7 @@ function render() {
   $('capture-span').replaceChildren(...(state.spans ?? []).map(span => { const option = element('option', span.name); option.value = span.name; return option; }));
   if ([...$('capture-span').options].some(o => o.value === selected)) $('capture-span').value = selected;
   else $('capture-span').value = 'Unsorted';
-  renderSpans(); renderThread(); archiveUI?.update(); revisionsUI?.update();
+  renderSpans(); renderThread(); archiveUI?.update(); revisionsUI?.update(); threadReviewUI?.update();
 }
 const descriptions = {
   raw: 'A landing place for thoughts that don’t need a destination yet.',
@@ -248,7 +249,7 @@ function renderThread() {
   const reading = openingState();
   $('thread-replies').replaceChildren(...rows.map(({ capture, depth }) => {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
-    card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
+    card.append(element('p', `${capture.helperEventId?'Prepared helper proposal':'You'} · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
     const badge = openingBadge(capture, reading); if (badge) card.append(element('p', badge, 'small unopened-badge'));
     const provenance = proposalProvenance(capture); if (provenance) card.append(provenance);
     const files = attachedFiles(capture); if (files) card.append(files);
@@ -507,8 +508,34 @@ async function considerRevisionProposal({revisionId,revisionHash}) {
     notice('Exact revision prepared as a separate proposal. NOW is unchanged. Choosing a detail is a second action.');
   }catch(error){if(generation===epoch)fail(error);}finally{revisionPreparationPending.delete(key);revisionsUI.update();}
 }
+async function considerHelperProposal({eventId,eventHash}) {
+  const key=`${eventId}:${eventHash}`;if(helperPreparationPending.has(key)||resetting||!storageHealthy)return;
+  const operation=Symbol(),expectedEpoch=workspaceEpoch,generation=epoch,route=routeFromHash(),navigation=navigationVersion,originSource=$('source-dialog').open?sourceId:null;
+  helperPreparationPending.set(key,operation);threadReviewUI.update(true);
+  try{const proposal=await store.prepareHelperProposal({eventId,eventHash},{expectedEpoch});await refreshed();if(generation!==epoch||workspaceEpoch!==expectedEpoch)return;
+    const sameReading=originSource?$('source-dialog').open&&sourceId===originSource:!document.querySelector('dialog[open]');
+    if(navigationVersion===navigation&&routeFromHash()===route&&sameReading){if($('source-dialog').open)$('source-dialog').close();openSource(proposal.id,false);}
+    notice('Exact helper answer prepared as a separate proposal. NOW is unchanged. Choosing a detail is a second action.');
+  }catch(error){if(generation===epoch)fail(error);}finally{if(helperPreparationPending.get(key)===operation)helperPreparationPending.delete(key);threadReviewUI.update(true);}
+}
+function helperProvenanceKey(capture) {
+  const event=state.helperEvents?.find(e=>e.id===capture.helperEventId),review=state.threadReviews?.find(r=>r.id===event?.reviewId);let status='recovery';try{status=event&&review?helperState(state,review.id,event.role).status:'recovery';}catch{}
+  return JSON.stringify([capture.helperEventHash,state.reviewWarning??null,event?.hash,review?.hash,status,review?.context.map(ctx=>{const c=state.captures.find(row=>row.id===ctx.captureId);return[c?.id,c?.hash,c?.span];})]);
+}
+function refreshProposalProvenance() {
+  for(const box of document.querySelectorAll('.helper-proposal-provenance[data-capture-id], .revision-proposal-provenance[data-capture-id]')){const capture=state.captures.find(c=>c.id===box.dataset.captureId);if(capture&&box.dataset.provenanceKey!==(capture.helperEventId?helperProvenanceKey(capture):revisionProvenanceKey(capture)))box.replaceWith(proposalProvenance(capture));}
+}
+function helperProposalProvenance(capture) {
+  const box=element('aside',undefined,'proposal-provenance helper-proposal-provenance');box.dataset.captureId=capture.id;box.dataset.provenanceKey=helperProvenanceKey(capture);let status;try{status=validateProposalProvenance(capture,state);}catch{status='recovery';}
+  if(status!=='verified'){box.append(element('p','Helper proposal source links need recovery. Its exact writing is kept.','small'));const recovery=element('button','Inspect source recovery','text-button');recovery.onclick=()=>{if($('source-dialog').open)$('source-dialog').close();showView('engine');};box.append(recovery);return box;}
+  const event=state.helperEvents.find(e=>e.id===capture.helperEventId),review=state.threadReviews.find(r=>r.id===event.reviewId);
+  box.append(element('p',`Prepared from ${HELPER_ROLES[event.role].label} output. Saved byte links verified; model claims remain unverified.`,'small'));
+  const lineage=element('details',undefined,'proposal-lineage');lineage.append(element('summary','Read exact helper lineage'),element('p','This proposal keeps the complete exact answer and its approved context. Its own quote ranges are used for a separate next-step choice. No model was called by preparation.','small'),element('p',`Model ${event.model} · Attempt ${event.attempt} · ${new Date(event.at).toLocaleString()} · SHA-256 ${event.hash}`,'small file-checksum'),element('h4','Exact saved model answer'),element('pre',event.output,'raw'),element('h4','Exact approved review and selected context'),element('pre',JSON.stringify(review,null,2),'raw'));
+  const download=element('button','Download exact helper lineage','text-button');download.onclick=()=>downloadText(JSON.stringify({event,review},null,2),`effort-helper-lineage-${event.id}.json`);lineage.append(download);box.append(lineage);return box;
+}
+function revisionProvenanceKey(capture) { const revision=state.sourceRevisions?.find(r=>r.id===capture.sourceRevisionId),source=state.captures.find(c=>c.id===capture.parentId);return JSON.stringify([capture.sourceRevisionHash,state.revisionWarning??null,revision?.hash,source?.id,source?.hash,source?.span]); }
 function revisionProposalProvenance(capture) {
-  const box=element('aside',undefined,'proposal-provenance revision-proposal-provenance');let status;try{status=validateProposalProvenance(capture,state);}catch{status='recovery';}
+  const box=element('aside',undefined,'proposal-provenance revision-proposal-provenance');box.dataset.captureId=capture.id;box.dataset.provenanceKey=revisionProvenanceKey(capture);let status;try{status=validateProposalProvenance(capture,state);}catch{status='recovery';}
   if(status!=='verified'){box.append(element('p','Revision proposal source links need recovery. Its exact writing is kept.','small'));const recover=element('button','Inspect source recovery','text-button');recover.onclick=()=>{if($('source-dialog').open)$('source-dialog').close();showView('engine');};box.append(recover);return box;}
   const revision=state.sourceRevisions.find(row=>row.id===capture.sourceRevisionId),original=state.captures.find(row=>row.id===capture.parentId);
   box.append(element('p',revision.kind==='edit'?'Prepared from an exact saved correction. Source links verified.':'Prepared from an exact supplied transcript. Source links verified; audio is not verified.','small'));
@@ -516,6 +543,7 @@ function revisionProposalProvenance(capture) {
   const download=element('button','Download exact revision record','text-button');download.onclick=()=>downloadText(JSON.stringify(revision,null,2),`effort-revision-${revision.id}.json`);const source=element('button','Open original source thread','text-button');source.onclick=()=>{if($('source-dialog').open)$('source-dialog').close();openThread(original.id);};lineage.append(download,source);box.append(lineage);return box;
 }
 function proposalProvenance(capture) {
+  if (capture.helperEventId) return helperProposalProvenance(capture);
   if (capture.sourceRevisionId) return revisionProposalProvenance(capture);
   if (!capture.derivedFromId) return null;
   const box = element('aside', undefined, 'proposal-provenance'); let status;
@@ -680,7 +708,7 @@ function refreshed() {
       if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false);
     }
     if (branchSelection) { const branch = state.explorations?.find(b => b.id === branchSelection), source = branch && state.captures.find(c => c.id === branch.sourceId); if (currentView !== (source ? 'thread' : 'spans') || threadId !== (source?.id ?? null)) showView(routeFromHash(), false); }
-    if (openingOnly) { if(JSON.stringify(previous.recovery)!==JSON.stringify(state.recovery))renderRecovery(health); refreshOpeningSummaries(); refreshOpeningContext(); archiveUI?.update(); revisionsUI?.update(); threadReviewUI?.update(); return; }
+    if (openingOnly) { if(JSON.stringify(previous.recovery)!==JSON.stringify(state.recovery))renderRecovery(health); refreshOpeningSummaries(); refreshOpeningContext(); archiveUI?.update(); revisionsUI?.update(); threadReviewUI?.update(); refreshProposalProvenance(); return; }
     render();
     renderRecovery(health);
     if (health.heldNow) {
@@ -899,7 +927,7 @@ async function replaceDemo(samples) {
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
     ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
-    threadReviewUI?.reset(); peopleUI?.reset(); revisionsUI?.reset(); revisionPreparationPending.clear(); personSelection = null;
+    threadReviewUI?.reset(); peopleUI?.reset(); revisionsUI?.reset(); revisionPreparationPending.clear(); helperPreparationPending.clear(); personSelection = null;
     artifactTarget = null; artifactSelection = null; branchSelection = null; moveEditing = null; branchEditing = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
@@ -945,7 +973,7 @@ function recoverLegacyCapture() {
   if (workspaceEpoch !== undefined && workspaceEpoch !== null) return false;
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
 }
-threadReviewUI = createThreadReviewUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,element,saveDraft,loadContext,clearDraft,refreshed,notice,downloadText,displayTitle});
+threadReviewUI = createThreadReviewUI({openThread,prepareProposal:considerHelperProposal,isPreparing:(id,hash)=>helperPreparationPending.has(`${id}:${hash}`),getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,element,saveDraft,loadContext,clearDraft,refreshed,notice,downloadText,displayTitle});
 peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
 revisionsUI = createRevisionsUI({prepareProposal:considerRevisionProposal,isPreparing:(id,hash)=>revisionPreparationPending.has(revisionPreparationKey(id,hash)),getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,refreshed,element,organized,downloadText,notice,onSaved:id=>{if(currentView==='fort')archiveUI.refresh(id);}});
 $('revision-directory').addEventListener('toggle',async()=>{if(!$('revision-directory').open)return;try{await refreshed();if($('revision-directory').open)revisionsUI.directory();}catch(error){fail(error);}});
@@ -967,14 +995,14 @@ try {
   addEventListener('focus', () => refreshed().catch(fail));
   showView(routeFromHash(), false);
 } catch (error) {
-  booting = false; $('main').inert = false; $('main').removeAttribute('aria-busy'); storageHealthy = false; state = { captures: [], now: null, spans: [], recovery: [], sourceRevisions: [], revisionWarning: 'The workspace could not open. Source history is unknown.' }; render(); $('capture-open').disabled = false; $('save-capture').disabled = true;
+  booting = false; $('main').inert = false; $('main').removeAttribute('aria-busy'); storageHealthy = false; state = { captures: [], now: null, spans: [], recovery: [], sourceRevisions: [], revisionWarning: 'The workspace could not open. Source history is unknown.', threadReviews: [], helperEvents: [], reviewWarning: 'The workspace could not open. Helper history is unknown.' }; render(); $('capture-open').disabled = false; $('save-capture').disabled = true;
   $('storage-count').textContent = 'Saved originals unavailable'; $('now-title').textContent = 'NOW is unavailable.'; $('now-origin').textContent = 'Workspace unavailable'; $('now-reason').textContent = 'The workspace could not open, so its chosen step cannot be shown.';
   recoverLegacyCapture(); status('draft-state', 'Workspace unavailable. You can write and copy text, but saving is unavailable.'); showView('engine', false);
   fail(Error(`The local workspace could not open: ${error.message} Your saved data has not been cleared. Keep this tab open and copy any draft before retrying.`));
 }
 
 async function prepareUpdate() {
-  if (booting || threadReviewUI?.busy() || revisionPreparationPending.size || revisionsUI?.busy() || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
+  if (booting || helperPreparationPending.size || threadReviewUI?.busy() || revisionPreparationPending.size || revisionsUI?.busy() || peopleUI?.busy() || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
   if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {
