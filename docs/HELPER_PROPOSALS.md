@@ -14,7 +14,7 @@ The Engine Room directory exposes intact approvals/answers even when their origi
 
 Live helper/revision storage outages downgrade their proposal provenance labels without replacing the open original text. Restoring storage updates the label again. A completed preparation preserves later navigation and doesn't reopen a dismissed source view. Reset epochs fence stale writes/results; pending-operation identities prevent an older completion from clearing newer pending work.
 
-Schema14 fences older strict primary readers. Backup16 imports1..15 and includes helper proposals, request/attempt histories, exact quote choices and recovery. A pre-proposal backup14 doesn't erase later writing or chosen work. This schema advance also covers people who inspected the earlier unpublished DB12 branch.
+Current schema15 fences older strict readers, including pre-HTTPS approvals. Backup17 imports1..16 and includes helper proposals, request/attempt histories, exact quote choices and recovery. A pre-proposal backup14 doesn't erase later writing or chosen work. This schema advance also covers people who inspected the earlier unpublished DB12 branch.
 
 ## Executed acceptance
 

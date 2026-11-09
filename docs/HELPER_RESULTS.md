@@ -1,6 +1,6 @@
 # Structured helper results and exact input receipts
 
-This is the unpublished schema14 / backup16 continuation on feature/thread-review-20261109. Published main remains869649e. See CURRENT_STATE.md for verification and release gaps.
+This contract began in the unpublished schema14 / backup16 continuation on feature/thread-review-20261109. The active HTTPS continuation uses schema15 / backup17; see HELPER_CONNECTIONS.md. Published main remains869649e. See CURRENT_STATE.md for verification and release gaps.
 
 A checked v2 companion returns an actual result type, display text, source-attributed claims, assumptions, uncertainties, a recommendation, optional proposals and an uncalibrated confidence label. The actual type may differ from the requested type. NO_ACTION and BLOCKED remain valid. Claims cite only IDs in the approved context; those links establish attribution, not independent factual truth. Unknown confidence is valid. These fields appear inside the existing thread or request directory, without adding controls to Home.
 
