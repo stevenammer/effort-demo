@@ -1,0 +1,56 @@
+// Exact-source opening context, isolated synthetic workspaces only.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
+import { createDemoServer } from './serve.mjs';
+const { chromium } = await import(process.env.PLAYWRIGHT_DIR ? pathToFileURL(`${process.env.PLAYWRIGHT_DIR}/index.mjs`) : 'playwright');
+const remote = process.env.DEMO_BASE_URL?.replace(/\/$/, ''), server = remote ? null : createDemoServer();
+if (server) await new Promise(r => server.listen(0, '127.0.0.1', r));
+const base = remote || `http://127.0.0.1:${server.address().port}`, browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
+const errors = [], outside = [];
+async function state(page) { return page.evaluate(async () => { const {createStore}=await import('./store.js'); const s=createStore();try{return await s.read();}finally{await s.close();} }); }
+async function root(page, id) { await page.goto(`${base}/public/#thread/${id}`); await page.locator('#thread-post h1').waitFor(); }
+async function opened(page) { await page.locator('#thread-opening .opening-status').getByText('Writing opened here', {exact:true}).waitFor(); }
+try {
+ for (const width of [1440,390,320]) {
+  const context = await browser.newContext({viewport:{width,height:900},acceptDownloads:true,reducedMotion:'reduce'}); context.setDefaultTimeout(12000); context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
+  await context.route('**/*',route=>{if(!route.request().url().startsWith(base+'/')){outside.push(route.request().url());return route.abort();}return route.continue();});
+  const p=await context.newPage(); await p.goto(`${base}/public/`); await p.locator('#capture-open:enabled').waitFor(); const before=await state(p);
+  await p.locator('[data-view="spans"]').first().click(); assert.equal((await state(p)).openedReceipts.length,0,'directory viewing never consumes unread writing');
+  await p.locator('#capture-open').click(); await p.locator('#capture-text').fill('Synthetic opening source. Keep its exact writing.'); await p.locator('#save-capture').click(); await p.locator('#capture-dialog').waitFor({state:'hidden'});
+  const source=(await state(p)).captures.find(c=>c.text.startsWith('Synthetic opening source.')); await p.goto(`${base}/public/#span/${source.span.toLowerCase()}`); await p.locator('#span-entries .opening-summary').filter({hasText:'1 not opened here'}).first().waitFor();
+  await root(p,source.id); await opened(p); let saved=await state(p); assert.deepEqual(saved.now,before.now); assert.ok(saved.openedReceipts.some(r=>r.captureId===source.id));
+  const peer=await context.newPage(); await peer.goto(`${base}/public/`); await peer.locator('#capture-open:enabled').waitFor();
+  const late=await peer.evaluate(async id=>{const {createStore}=await import('./store.js');const s=createStore(),OriginalDate=Date;try{globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:['2020-01-01T00:00:00.000Z']));}};return await s.capture('A later reply with an older timestamp.','Unsorted',id);}finally{globalThis.Date=OriginalDate;await s.close();}},source.id);
+  await p.locator('.thread-reply').filter({hasText:late.text}).locator('.unopened-badge').getByText('Not opened in this view yet',{exact:true}).waitFor(); assert.ok(!(await state(p)).openedReceipts.some(r=>r.captureId===late.id),'a new backdated reply must remain unconsumed');
+  await p.locator('#mark-opened').click(); await opened(p); assert.ok((await state(p)).openedReceipts.some(r=>r.captureId===late.id));
+  await p.reload(); await opened(p); assert.equal((await state(p)).openedReceipts.filter(r=>[source.id,late.id].includes(r.captureId)).length,2);
+  // A real committed receipt whose readback fails must retain an explicit verification retry.
+  await p.locator('[data-view="spans"]').first().click(); const faultSource=await p.evaluate(async()=>{const{createStore}=await import('./store.js');const s=createStore();try{return await s.capture('Opening readback fault fixture.','Learning');}finally{await s.close();}});
+  await p.evaluate(()=>{const add=IDBObjectStore.prototype.add,get=IDBObjectStore.prototype.get;window.__openedAdd=add;window.__openedGet=get;window.__openedInserted=false;window.__openedFailed=false;IDBObjectStore.prototype.add=function(...args){const req=add.apply(this,args);if(this.name==='openedReceipts')window.__openedInserted=true;return req;};IDBObjectStore.prototype.get=function(...args){if(this.name==='openedReceipts'&&this.transaction.mode==='readonly'&&window.__openedInserted&&!window.__openedFailed){window.__openedFailed=true;throw Error('Synthetic opening readback failure');}return get.apply(this,args);};});
+  await p.evaluate(id=>{location.hash=`#thread/${id}`;},faultSource.id); await p.locator('#thread-opening .opening-status').getByText(/Opening status wasn't saved/).waitFor(); assert.ok((await state(p)).openedReceipts.some(r=>r.captureId===faultSource.id)); await p.locator('#mark-opened').click(); await opened(p); assert.equal((await state(p)).openedReceipts.filter(r=>r.captureId===faultSource.id).length,1);
+  await p.evaluate(()=>{IDBObjectStore.prototype.add=window.__openedAdd;IDBObjectStore.prototype.get=window.__openedGet;});
+  // Persist a new reply while the view is open, then carry exact opened IDs through backup.
+  const pending=await peer.evaluate(async id=>{const{createStore}=await import('./store.js');const s=createStore();try{return await s.capture('Still not opened when the backup was taken.','Unsorted',id);}finally{await s.close();}},source.id);
+  await p.locator('[data-view="engine"]').click(); const [download]=await Promise.all([p.waitForEvent('download'),p.locator('#download').click()]);const raw=await readFile(await download.path(),'utf8'),payload=JSON.parse(raw).payload;assert.equal(payload.version,10);assert.ok(!payload.openedReceipts.some(r=>r.captureId===pending.id));assert.deepEqual(payload.now,before.now);
+  const old=structuredClone(payload);old.version=9;delete old.openedReceipts;const legacy=JSON.stringify({payload:old,sha256:createHash('sha256').update(JSON.stringify(old)).digest('hex')});
+  p.once('dialog',d=>d.accept());await p.locator('#reset').click();await p.getByText('Browser demo cleared. Your private EFFORT app is separate.',{exact:true}).waitFor();await p.locator('[data-view="engine"]').click();await p.locator('#restore-file').setInputFiles({name:'opened.json',mimeType:'application/json',buffer:Buffer.from(raw)});await p.getByText(/Restore verified/).waitFor();assert.deepEqual((await state(p)).openedReceipts,payload.openedReceipts);
+  await p.locator('#restore-file').setInputFiles({name:'older.json',mimeType:'application/json',buffer:Buffer.from(legacy)});await p.getByText(/Restore verified/).waitFor();assert.deepEqual((await state(p)).openedReceipts,payload.openedReceipts,'older backup cannot clear opened history');
+  await p.goto(`${base}/public/#span/unsorted`);await p.locator('#span-entries .journal-post').filter({hasText:source.text}).locator('.opening-summary').getByText('1 not opened here',{exact:true}).waitFor();assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await p.screenshot({path:`/tmp/effort-opened-${width}.png`,fullPage:true});
+  await peer.close();await context.close();console.log(`Opened context passed at ${width}px.`);
+ }
+ // Optional-store failure must not break capture, and an old pending opening cannot cross a reset.
+ const faultContext=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true});faultContext.setDefaultTimeout(12000);faultContext.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));await faultContext.route('**/*',route=>{if(!route.request().url().startsWith(base+'/')){outside.push(route.request().url());return route.abort();}return route.continue();});
+ const f=await faultContext.newPage();await f.goto(`${base}/public/`);await f.locator('#capture-open:enabled').waitFor();const first=await state(f),source=first.captures[0];
+ await f.evaluate(()=>{window.__openedAll=IDBObjectStore.prototype.getAll;IDBObjectStore.prototype.getAll=function(...args){if(this.name==='openedReceipts')throw Error('Synthetic optional opening store unavailable');return window.__openedAll.apply(this,args);};dispatchEvent(new Event('focus'));});
+ await f.evaluate(id=>{location.hash=`#thread/${id}`;},source.id);await f.locator('#thread-opening .opening-status').getByText(/Opening history is unavailable/).waitFor();assert.equal(await f.locator('#thread-post h1').isVisible(),true);
+ await f.locator('#capture-open').click();await f.locator('#capture-text').fill('Saved with unavailable opening storage.');await f.locator('#save-capture').click();await f.locator('#capture-dialog').waitFor({state:'hidden'});assert.deepEqual((await state(f)).now,first.now);
+ await f.locator('[data-view="engine"]').click();await f.locator('#download').click();await f.locator('#notice').getByText(/complete backup cannot/).waitFor();
+ const pending=(await state(f)).captures.find(c=>c.text==='Saved with unavailable opening storage.');
+ await f.evaluate(id=>{IDBObjectStore.prototype.getAll=window.__openedAll;const subtle=crypto.subtle,original=subtle.digest.bind(subtle);window.__openingWaiting=false;Object.defineProperty(subtle,'digest',{configurable:true,value:(...args)=>{const text=new TextDecoder().decode(args[1]);if(!window.__openingWaiting&&text.includes('"captureId":')&&text.includes(id)){window.__openingWaiting=true;return new Promise(resolve=>{window.__releaseOpening=()=>original(...args).then(resolve);});}return original(...args);}});dispatchEvent(new Event('focus'));location.hash=`#thread/${id}`;},pending.id);
+ await f.waitForFunction(()=>window.__openingWaiting);await f.locator('[data-view="engine"]').click();f.once('dialog',d=>d.accept());await f.locator('#reset').click();await f.getByText('Browser demo cleared. Your private EFFORT app is separate.',{exact:true}).waitFor();await f.evaluate(()=>window.__releaseOpening());
+ await f.locator('#capture-open').click();await f.locator('#capture-text').fill('A new workspace opens normally after the old acknowledgement.');await f.locator('#save-capture').click();await f.locator('#capture-dialog').waitFor({state:'hidden'});const fresh=await state(f);assert.equal(fresh.openedReceipts.length,0);assert.equal(fresh.captures.length,1);await root(f,fresh.captures[0].id);await opened(f);assert.equal((await state(f)).openedReceipts.length,1);
+ await faultContext.close();console.log('Opening fault isolation and pending-reset fencing passed.');
+ assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);console.log('PASS: exact snapshot opening, backdated cross-tab reply, explicit late-writing acknowledgement, readback retry, unchanged NOW, backup10 and backup9 restore, 1440/390/320. No page errors or external requests.');
+} finally {await browser.close();if(server)await new Promise(r=>server.close(r));}

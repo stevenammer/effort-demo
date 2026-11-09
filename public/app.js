@@ -1,3 +1,4 @@
+import { deriveOpened } from './opened.js';
 import { deriveMoves, deriveBranchStatuses, moveSnapshot, validMoveSnapshot } from './thinking.js';
 import { artifactBytes, artifactPreview, artifactSourceStatus, ARTIFACT_LIMITS } from './artifacts.js';
 import { EXPLORATION_DIALS, DISTILLATION_TYPES, validateProposalProvenance } from './exploration.js';
@@ -24,6 +25,8 @@ let explorationDraft = null, distillationDraft = null, explorationSaving = false
 let moveEditing = null, moveEpoch, moveSaving = false, moveLoading = false, branchEditing = null, branchEpoch, branchSaving = false, branchLoading = false;
 let branchSelection = null, branchFocusPending = false;
 const proposalPending = new Set();
+let threadOpeningPending = false, openingViewToken = 0;
+const openingPending = new Map(), openingErrors = new Map();
 const shadows = new Map(), versions = new Map(), adopted = new Set(), completed = new Map(), volatileReplies = new Map();
 const value = id => shadows.has(id) ? shadows.get(id) : $(id).value;
 function setValue(id, text) { $(id).value = text; shadows.set(id, text); }
@@ -67,7 +70,7 @@ function showView(route, focus = true) {
   currentView = base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'engine'].includes(base) ? base : 'home';
   try { activeSpan = (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
   const nextThread = base === 'branch' && branchSource ? branchSource.id : base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
-  if (threadId !== nextThread) { if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
+  if (threadId !== nextThread) { openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
     if (button.dataset.view === (currentView === 'thread' ? 'spans' : currentView)) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -114,11 +117,36 @@ const descriptions = {
   workspace: 'Working notes, decisions and the material behind them.',
 };
 function roots() { const ids = new Set(state.captures.map(c => c.id)); return state.captures.filter(c => !parentOf(c) || !ids.has(c.parentId)); }
+function openingState() { return deriveOpened({ openedReceipts: state.openedReceipts ?? [], captures: state.captures, recovery: state.recovery ?? [] }); }
+function openingSummary(captures, reading) {
+  if (state.openedWarning) return 'Opening status unavailable';
+  const unknown = captures.filter(c => reading.unknown.has(c.id)).length, fresh = captures.filter(c => !reading.opened.has(c.id) && !reading.unknown.has(c.id)).length;
+  return [fresh ? `${fresh} not opened here` : 'Writing opened here', unknown ? `${unknown} opening status needs recovery` : ''].filter(Boolean).join(' · ');
+}
+async function recordOpened(rootId, items) {
+  if (openingPending.has(rootId) || !items.length || resetting) return;
+  const generation = epoch, expectedEpoch = workspaceEpoch, operation = {}; openingPending.set(rootId, operation); openingErrors.delete(rootId);
+  try { await store.markOpened({ items }, { expectedEpoch }); if (generation !== epoch || workspaceEpoch !== expectedEpoch) return; await refreshed(); }
+  catch (error) { if (generation === epoch && workspaceEpoch === expectedEpoch) openingErrors.set(rootId, `Opening status wasn't saved: ${error.message} Your writing and NOW are unchanged.`); }
+  finally { if (openingPending.get(rootId) === operation) openingPending.delete(rootId); if (generation === epoch && workspaceEpoch === expectedEpoch && state) { renderSpans(); renderThread(); } }
+}
+function renderOpeningContext(root, captures) {
+  const reading = openingState(), missing = captures.filter(c => !reading.opened.has(c.id)), panel = $('thread-opening'); panel.replaceChildren();
+  panel.append(element('p', state.openedWarning || openingErrors.get(root.id) || openingSummary(captures, reading), 'small opening-status'));
+  panel.append(element('p', 'Opening records the exact writing displayed here, not whether you read or agree with it. New replies stay separate. NOW is unchanged.', 'small muted'));
+  const toMark = missing.length ? missing : openingErrors.has(root.id) ? captures : [];
+  if (toMark.length || state.openedWarning) { const mark = element('button', openingPending.has(root.id) ? 'Keeping opening status…' : 'Mark displayed writing opened', 'text-button'); mark.id = 'mark-opened'; mark.disabled = openingPending.has(root.id) || !!state.openedWarning; mark.onclick = () => recordOpened(root.id, toMark.map(c => ({ id: c.id, hash: c.hash }))); panel.append(mark); }
+  if (threadOpeningPending && !booting && !state.openedWarning && !document.hidden) {
+    threadOpeningPending = false; const token = openingViewToken, destination = threadId, expectedEpoch = workspaceEpoch, items = missing.map(c => ({ id: c.id, hash: c.hash }));
+    requestAnimationFrame(() => { if (token !== openingViewToken || currentView !== 'thread' || threadId !== destination || workspaceEpoch !== expectedEpoch) return; if (document.hidden) { threadOpeningPending = true; return; } recordOpened(root.id, items); });
+  }
+}
 function renderSpans() {
   const span = (state.spans ?? []).find(s => s.id === activeSpan);
   $('span-directory').hidden = !!span; $('span-feed').hidden = !span;
   $('directory-title').textContent = span?.name ?? 'Attention Spans.';
   $('directory-intro').textContent = span ? 'An Attention Span. Its posts stay in time order, with the conversation attached.' : 'Named places for thoughts, conversations and things worth returning to.';
+  const reading = openingState();
   const query = $('span-search').value.trim().toLowerCase();
   const directory = (state.spans ?? []).filter(s => !query || s.name.toLowerCase().includes(query) || state.captures.some(c => spanKey(c.span) === s.id && c.text.toLowerCase().includes(query)));
   $('span-list').replaceChildren(...directory.map(s => {
@@ -127,12 +155,13 @@ function renderSpans() {
     card.append(element('span', s.kind === 'journal' ? 'ATTENTION SPAN' : s.kind.toUpperCase(), 'eyebrow'), element('h2'));
     card.querySelector('h2').append(link); card.append(element('p', descriptions[s.kind], 'small'));
     card.append(element('p', `${posts.length} post${posts.length === 1 ? '' : 's'} · ${all.length - posts.length} repl${all.length - posts.length === 1 ? 'y' : 'ies'}${latest ? ` · ${formatDate(latest.createdAt)}` : ' · Ready when you are'}`, 'small'));
+    if (all.length) card.append(element('p', openingSummary(all, reading), 'small opening-summary'));
     if (latest) card.append(element('p', displayTitle(latest.text, 110), 'span-preview'));
     return card;
   }));
   if (!directory.length) $('span-list').append(element('p', 'No Attention Spans match. Try another name or a phrase from a post.', 'empty'));
   if (!span) return;
-  $('span-description').textContent = descriptions[span.kind];
+  $('span-description').textContent = descriptions[span.kind] + (state.openedWarning ? ` ${state.openedWarning}` : '');
   renderSpanDepth(span);
   const posts = roots().filter(c => spanKey(c.span) === span.id).slice().reverse();
   const byId = new Map(state.captures.map(c => [c.id, c])), counts = new Map();
@@ -141,6 +170,7 @@ function renderSpans() {
     const group = element('article', undefined, 'journal-post'); const heading = element('div', undefined, 'entry-heading');
     heading.append(element('span', `${formatDate(capture.createdAt)} · ${capture.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'));
     group.append(heading, element('h2', displayTitle(capture.text, 90)), element('p', readablePreview(capture.text, 360), 'post-excerpt'));
+    const related = state.captures.filter(c => threadRoot(c, byId)?.id === capture.id); group.append(element('p', openingSummary(related, reading), 'small opening-summary'));
     const replyCount = counts.get(capture.id) ?? 0;
     const actions = element('div', undefined, 'post-actions'); const open = element('button', `Open thread · ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}`, 'text-button'); open.onclick = () => openThread(capture.id);
     const original = element('button', 'See original ↗', 'text-button'); original.onclick = () => openSource(capture.id, true);
@@ -154,7 +184,7 @@ function renderThread() {
   const requested = state.captures.find(c => c.id === threadId), root = requested && threadRoot(requested, state.captures);
   const main = $('thread-post'); main.replaceChildren();
   $('thread-permalink').hidden = $('reply-to-root').hidden = !root;
-  if (!root) { $('thread-explorations').replaceChildren(); $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
+  if (!root) { $('thread-opening').replaceChildren(); $('thread-explorations').replaceChildren(); $('back-feed').onclick = () => showView('spans'); main.append(element('h1', 'This thought isn’t here.'), element('p', 'Its link may belong to another browser workspace or a record in Engine Room recovery.')); $('thread-replies').replaceChildren(); $('reply-form').hidden = false; $('reply-target').textContent = 'This thread is missing. Your draft remains here; recover the thread or copy the text before choosing another destination.'; $('save-reply').disabled = true; return; }
   $('reply-form').hidden = false; $('thread-permalink').href = `#thread/${root.id}`;
   $('back-feed').onclick = () => openSpan(spanKey(root.span));
   main.append(element('span', `${root.span} · ${formatDate(root.createdAt)} · ${root.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'), element('h1', displayTitle(root.text, 110)));
@@ -177,9 +207,11 @@ function renderThread() {
   function collect(id, depth) { for (const c of children.get(id) ?? []) { if (visited.has(c.id)) continue; visited.add(c.id); rows.push({ capture: c, depth }); collect(c.id, depth + 1); } }
   collect(root.id, 0);
   $('replies-heading').textContent = `${rows.length} repl${rows.length === 1 ? 'y' : 'ies'}`;
+  const reading = openingState();
   $('thread-replies').replaceChildren(...rows.map(({ capture, depth }) => {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
     card.append(element('p', `You · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
+    if (!state.openedWarning && !reading.opened.has(capture.id)) card.append(element('p', reading.unknown.has(capture.id) ? 'Opening status needs recovery' : 'Not opened in this view yet', 'small unopened-badge'));
     const provenance = proposalProvenance(capture); if (provenance) card.append(provenance);
     const files = attachedFiles(capture); if (files) card.append(files);
     const actions = element('div', undefined, 'post-actions'); const button = element('button', 'Reply to this', 'text-button'); button.onclick = () => targetReply(capture.id);
@@ -193,7 +225,7 @@ function renderThread() {
   const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
   $('reply-target').textContent = validTarget ? `Replying to: ${displayTitle(target.text, 100)}` : 'Choose a reply target before saving. Your draft is still here.';
   $('reply-to-root').onclick = () => targetReply(root.id);
-  renderExplorations(root); focusArtifact(); focusBranch();
+  renderExplorations(root); renderOpeningContext(root, [root, ...rows.map(row => row.capture)]); focusArtifact(); focusBranch();
 }
 function renderExplorations(root) {
   const host = $('thread-explorations'); host.replaceChildren();
@@ -565,7 +597,7 @@ $('reply-form').onsubmit = async event => {
 function refreshed() {
   refreshing = refreshing.catch(() => {}).then(async () => {
     state = await store.read({ includeDrafts: false }); const health = await store.health();
-    if (workspaceEpoch !== undefined && health.epoch !== workspaceEpoch) { fenced = true; adopted.clear(); status('draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); status('reply-draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); } workspaceEpoch = health.epoch;
+    if (workspaceEpoch !== undefined && health.epoch !== workspaceEpoch) { openingViewToken++; threadOpeningPending = false; openingPending.clear(); openingErrors.clear(); fenced = true; adopted.clear(); status('draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); status('reply-draft-state', 'Workspace changed in another tab. Your writing remains here; copy it before leaving.'); } workspaceEpoch = health.epoch;
     storageHealthy = true; $('capture-open').disabled = booting;
     if (artifactSelection) {
       const file = state.artifacts?.find(a => a.id === artifactSelection), source = file && state.captures.find(c => c.id === file.captureId);
@@ -802,6 +834,7 @@ async function replaceDemo(samples) {
     for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
+    openingViewToken++; threadOpeningPending = false; openingPending.clear(); openingErrors.clear();
     for (const id of ['capture-dialog', 'hold-dialog', 'drop-dialog', 'span-dialog', 'explore-dialog', 'distill-dialog', 'artifact-dialog', 'move-dialog', 'branch-dialog']) if ($(id).open) $(id).close();
     workspaceEpoch = (await store.health()).epoch; fenced = false;
     try { shelf = createDraftShelf(); await shelf.ready; } catch (error) { shelf = null; draftCleanupError = error; }
@@ -862,7 +895,7 @@ try {
 }
 
 async function prepareUpdate() {
-  if (booting || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
+  if (booting || openingPending.size || saving || holdSaving || dropSaving || replyLoading || resetting || explorationSaving || distillationSaving || explorationLoading || distillationLoading || proposalPending.size || artifactSaving || moveSaving || branchSaving || moveLoading || branchLoading) throw Error('Wait for the current save or view to finish.');
   if ($('artifact-file').files.length) throw Error("Save the selected file or clear its selection before opening an update. File selections aren't retained after reload.");
   document.body.inert = true;
   try {

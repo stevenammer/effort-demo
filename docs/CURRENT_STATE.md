@@ -56,6 +56,14 @@ Local core, exploration, proposal, connected-file, draft, composer and offline/u
 
 Runtime `1c367aa` is pushed to main and deployed on GitHub Pages. GitHub checks **42542153311** and Pages **42542152396** succeeded. Hosted thinking acceptance passed at all three widths with no page errors or external requests. The hosted manifest exactly matches the tested source (manifest-file SHA-256 `fe435d85224ad802819bf8fe75ff75be60bbfebd75d0cfca4ec716ffd31dd6fa`). The remaining full-map work stays open; this release does not prove the whole product complete.
 
+## Local slice in progress: opening context
+
+Branch **feature/opened-context-20261108** adds exact-source opening receipts, neutral not-opened counts in Attention Spans and explicit acknowledgement of replies arriving in an already open thread. No timestamp cutoff and no NOW mutation. Schema8 / backup10 accepts backups1 through9. See `docs/OPENED.md`.
+
+Parent full suite: **165/165 pass**. Focused storage integration also covers backup portability, older backup restoration, independent timestamps, readback retry, corrupt-receipt recovery, all three optional stores failing together and continued capture with unknown opening status. New browser acceptance passes at1440/390/320, with backdated cross-tab replies, exact acknowledgement, failed readback retry, unchanged NOW and backup10/older9 restoration. Optional-store failure preserves primary capture; a blocked acknowledgement cannot cross reset, and the next workspace can open normally. No page errors or external requests. This slice is not published; regression, upgrade and fresh-checkout gates remain. Last deployed runtime remains1c367aa (release documentation78af122).
+
+Finish three-width browser/fault checks, regression acceptance, actual older-client upgrade, fresh checkout and publication/hosted verification. People relationships remain the next connected-depth slice, followed by explicitly invoked bounded help and the remaining full map. Preserve this branch rather than restart from main.
+
 ## Resume here
 
 1. Inspect actual Git status and read the parity map. Connected files and proposals are already released; don't rebuild them from an older WIP branch.

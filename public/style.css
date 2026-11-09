@@ -894,3 +894,6 @@ input[type=file] { max-width:100%; min-width:0; }
 .branch-history,.saved-move,.branch-promotion { margin:.8rem 0; }
 .selected-branch { outline:1px solid #a99ae8; }
 .set-aside-branches { margin:1rem 0; }
+
+.opening-context { border-top: 1px solid var(--line); padding-top: .8rem; margin: 1rem 0; }
+.opening-summary, .unopened-badge { color: #b5c8af; }

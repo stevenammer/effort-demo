@@ -21,8 +21,8 @@ test('store integrates exact move snapshots, explicit evidence and portable immu
   assert.equal(deriveMoves(state.moveEvents)[0].enabled, false); assert.equal(deriveBranchStatuses(state.branchEvents)[0].evidence, true);
   const backup = await x.store.exportData(), target = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false });
   await target.restore(backup); await target.restore(backup); const restored = await target.read();
-  assert.equal(restored.version, 9); assert.deepEqual(restored.moveEvents, [revision]); assert.deepEqual(restored.branchEvents, [event]); assert.deepEqual(restored.explorations, state.explorations);
-  const legacy = structuredClone(JSON.parse(backup).payload); legacy.version = 8; delete legacy.branchEvents; delete legacy.moveEvents; legacy.explorations = []; legacy.distillations = [];
+  assert.equal(restored.version, 10); assert.deepEqual(restored.moveEvents, [revision]); assert.deepEqual(restored.branchEvents, [event]); assert.deepEqual(restored.explorations, state.explorations);
+  const legacy = structuredClone(JSON.parse(backup).payload); legacy.version = 8; delete legacy.openedReceipts; delete legacy.branchEvents; delete legacy.moveEvents; legacy.explorations = []; legacy.distillations = [];
   const oldTarget = createStore({ indexedDB: new IDBFactory(), legacyStorage: null, broadcast: false }); await oldTarget.restore(JSON.stringify({ payload: legacy, sha256: await sha256(JSON.stringify(legacy)) }));
   assert.deepEqual((await oldTarget.read()).moveEvents, []); await oldTarget.close(); await target.close(); await close(x);
 });
