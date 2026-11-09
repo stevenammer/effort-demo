@@ -1,14 +1,20 @@
 # E.F.F.O.R.T., a public walkthrough
 
-Development checkpoint: [current release, verified workflows and remaining work](docs/CURRENT_STATE.md). The full product goal remains open; the checkpoint distinguishes verified behavior from remaining work.
-
 **Capture a thought. Keep the original. Choose one next step.**
 
-[Open the interactive walkthrough](https://stevenammer.github.io/effort-demo/).
+[Open the interactive walkthrough](https://stevenammer.github.io/effort-demo/). It runs in your browser with fictional sample data. No account, no backend, no API key.
 
-This is an interactive browser demonstration of E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts), Steven Ammer's existing personal Android app. Attention Spans are named places with chronological posts and nested replies. It uses a small extract of the app's actual deterministic organisation code and fabricated examples.
+E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts) is my personal Android app for people whose thoughts arrive faster than they can sort them. This is a public, browser-only walkthrough of how it thinks.
 
-The walkthrough is separate from the private app and its data. It isn't a replacement phone app, a connected agent service, or an export of someone's personal workspace.
+## What this shows
+
+- **Your original is never lost.** Every capture is read back and SHA-256 verified before it says SAVED. Organizing is a reversible view, never a rewrite.
+- **Commitments are explicit.** Nothing becomes work by itself. You pick one next step, and finishing it leaves a self-reported receipt.
+- **AI help is bounded and leaves receipts.** Helpers are off by default. You approve exact selected text and a self-hosted route, and every answer keeps its prompt, model and lineage.
+
+## How it was built
+
+I wrote the specs and decisions, agents wrote most of the code, and I red-teamed it and chose what shipped. The attacks that found real defects, and the fixes, are in [RED_TEAM.md](docs/RED_TEAM.md). The running dev log, including what is verified and what isn't, is [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
 
 ![E.F.F.O.R.T. browser walkthrough, using fictional sample data](docs/screens/home-desktop.png)
 
