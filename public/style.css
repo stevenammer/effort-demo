@@ -924,3 +924,8 @@ input[type=file] { max-width:100%; min-width:0; }
 .review-directory .raw { max-height:22rem; overflow:auto; }
 .review-directory p,.review-directory summary,.helper-directory-answer { overflow-wrap:anywhere; min-width:0; }
 .helper-directory-answer { border-top:1px solid var(--line); padding-top:1rem; margin-top:1rem; }
+
+.helper-claims { margin:1rem 0; overflow-wrap:anywhere; }
+.helper-claims h5 { font-size:.85rem; margin:.6rem 0; }
+.helper-claims a { display:block; margin:.5rem 0; }
+.helper-result-metadata .raw { max-height:22rem; overflow:auto; }

@@ -4,7 +4,7 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-Published `main` runtime is **4d65061**. Exact correction/transcript proposals join separate source revisions, FORT/live EF, People, opening context, thinking, connected files and exploration proposals. Schema11 / backup13 imports1..12. The active checkout is **feature/thread-review-20261109**, an unpublished schema13/backup15 continuation. Inspect actual Git state before resuming.
+Published `main` runtime is **4d65061**. Exact correction/transcript proposals join separate source revisions, FORT/live EF, People, opening context, thinking, connected files and exploration proposals. Schema11 / backup13 imports1..12. The active checkout is **feature/thread-review-20261109**, an unpublished schema14/backup16 continuation. Inspect actual Git state before resuming.
 
 The ongoing objective is to bring EFFORT close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 
@@ -121,6 +121,14 @@ Exact helper-answer proposals, model/review/attempt lineage, an independent own-
 Failing regressions exposed and fixed: a restored exact approved review stayed permanently unknown; a missing secondary selected source blocked primary workspace reading; live helper/revision provenance labels stayed verified during optional-family outages; Engine Room orphan rows failed to refresh on primary-source changes. Raw damaged copies remain. No actual model was called, no private backend changed and this continuation is not deployed.
 
 Still required for this complete slice: structured actual result/fact/assumption/uncertainty/confidence metadata and selected-source attribution; configured cross-device companion access and pairing continuity; context-budget/stop-reason/residency and broader helper fault/navigation tests; actual self-hosted inference; fresh/publication/hosted release gates. Then continue the full PARITY map and additional red teams before See / Spec / Send. Neither the tested checkpoint nor this continuation proves a complete port.
+
+## Active continuation: structured helper results and input receipts
+
+The current checkout advances to **schema14 / backup16**, importing1..15. Main remains869649e. Structured actual result types, attributed claims, assumptions, uncertainties, recommendations, suggestions and uncalibrated confidence are stored with exact raw JSON and an execution receipt. New approved sources bind known captured/model/revision/distillation origin; old rows remain unchanged and visibly legacy. Individual model suggestions prepare their own exact proposal, with a separate quote choice. See HELPER_RESULTS.md.
+
+Parent282 tests pass and36 browser/worker modules pass syntax. New three-width structured-helper browser acceptance passes using the real companion with a synthetic Ollama server. Context-window, incomplete stop, malformed/foreign-source output, protocol downgrade, readback ambiguity and near-capacity pre-dispatch reservation tests pass. Malformed embedded receipt restoration is refused atomically without changing existing proposals or backup. Full workflow/upgrade/fresh-clone evidence is being completed; inspect actual logs/Git before making stronger claims.
+
+No actual model was loaded or called. Cross-device HTTPS/pairing, real self-hosted inference and publication/hosted gates remain before completing this helper slice. The full PARITY map and additional adversarial campaign remain before See / Spec / Send.
 
 ## Resume here
 

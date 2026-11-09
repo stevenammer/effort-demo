@@ -1,10 +1,11 @@
+import { validHelperSelection, helperSelectionText } from './helper-contract.js';
 import { request } from './database.js';
 import { validId, validHash, stableId, sha256, same, IntegrityError } from './primitives.js';
 import { validateCapture } from './records.js';
 import { validateReviewState, helperState, reviewContextStatus, REVIEW_TABLES } from './thread-review.js';
 import { spanKey, validSpan } from './spans.js';
 
-export const helperProposalId=(id,hash)=>stableId(JSON.stringify(['helper-proposal',id,hash]));
+export const helperProposalId=(id,hash,selection=null)=>stableId(JSON.stringify(['helper-proposal',id,hash,...(selection===null?[]:[{field:selection.field,index:selection.index}])]));
 export function validateHelperProposal(capture,state,{checkSources=true}={}) {
   if(capture.helperEventId===undefined)return null;
   if(state.reviewWarning)return 'recovery';
@@ -12,7 +13,7 @@ export function validateHelperProposal(capture,state,{checkSources=true}={}) {
   const fail=message=>{if(recorded())return 'recovery';throw new IntegrityError(message);};
   const event=(state.helperEvents??[]).find(e=>e.id===capture.helperEventId);
   if(!event){if(state.recovery.some(r=>r.source==='helperEvents'&&r.recordId===capture.helperEventId))return 'recovery';return fail('A helper proposal is missing its exact saved answer.');}
-  if(event.hash!==capture.helperEventHash||event.status!=='done'||event.output!==capture.text)return fail('A helper proposal does not match its sealed answer.');
+  if(event.hash!==capture.helperEventHash||event.status!=='done'||helperSelectionText(event,capture.helperSelection??null)!==capture.text)return fail('A helper proposal does not match its sealed answer.');
   const review=(state.threadReviews??[]).find(r=>r.id===event.reviewId);
   if(!review){if(state.recovery.some(r=>r.source==='threadReviews'&&r.recordId===event.reviewId))return 'recovery';return fail('A helper proposal is missing its approved context.');}
   if(event.reviewHash!==review.hash||review.sourceId!==capture.parentId||!review.invited.includes(event.role))return fail('A helper proposal differs from its approved review.');
@@ -36,14 +37,16 @@ export function createHelperProposals({db,ready=async()=>{},notify=()=>{},recove
     for(const capture of state.captures.filter(c=>c.helperEventId)){await validateCapture(capture);try{validateHelperProposal(capture,state,{checkSources:false});}catch(error){if(!(error instanceof IntegrityError))throw error;bad.push(await recoveryRecord('derivation',capture.id,JSON.stringify(capture),error.message));}}
     if(!bad.length)return;await db.run(['meta','captures','quarantine',...REVIEW_TABLES],'readwrite',async tx=>{if(await meta(tx,'epoch')!==state.epoch)return;for(const[t,rows]of [['captures',state.captures],['quarantine',state.recovery],...REVIEW_TABLES.map(t=>[t,state[t]])])if(!same(await request(tx.objectStore(t).getAll()),rows))return;for(const row of bad)await request(tx.objectStore('quarantine').put(row));});notify();
   }
-  async function prepare({eventId,eventHash},{expectedEpoch}={}) {
-    if(!validId(eventId)||!validHash(eventHash))throw Error('Choose an exact saved helper answer before preparing it.');
+  async function prepare({eventId,eventHash,selection=null},{expectedEpoch}={}) {
+    if(!validId(eventId)||!validHash(eventHash)||selection!==null&&!validHelperSelection(selection))throw Error('Choose an exact saved helper answer before preparing it.');
+    if(selection!==null)selection={field:'proposal',index:selection.index};
     const state=await snapshot();if(expectedEpoch!==undefined&&expectedEpoch!==(state.epoch??null))throw Error('The workspace changed. Reopen this answer before preparing it.');await validateReviewState(state);
     const event=state.helperEvents.find(e=>e.id===eventId&&e.hash===eventHash),review=event&&state.threadReviews.find(r=>r.id===event.reviewId),source=review&&state.captures.find(c=>c.id===review.sourceId);
     if(!event||event.status!=='done'||!review||!source||helperState(state,review.id,event.role).status!=='done'||reviewContextStatus(review,state)!=='verified')throw Error('The exact answer, approved review and selected sources need recovery before preparation.');
     for(const ctx of review.context)await validateCapture(state.captures.find(c=>c.id===ctx.captureId));
-    const id=await helperProposalId(event.id,event.hash),payload={id,text:event.output,hash:await sha256(event.output),createdAt:new Date().toISOString(),span:source.span,sample:false,parentId:source.id,helperEventId:event.id,helperEventHash:event.hash},record={...payload,derivedHash:await sha256(JSON.stringify(payload))};
-    const matches=row=>row.id===id&&row.text===record.text&&row.hash===record.hash&&row.span===record.span&&row.sample===false&&row.parentId===source.id&&row.helperEventId===event.id&&row.helperEventHash===event.hash;
+    const selectedText=helperSelectionText(event,selection);if(typeof selectedText!=='string'||!selectedText.trim())throw Error('That exact model proposal is unavailable. Keep the saved answer.');
+    const id=await helperProposalId(event.id,event.hash,selection),payload={id,text:selectedText,hash:await sha256(selectedText),createdAt:new Date().toISOString(),span:source.span,sample:false,parentId:source.id,helperEventId:event.id,helperEventHash:event.hash,...(selection===null?{}:{helperSelection:selection})},record={...payload,derivedHash:await sha256(JSON.stringify(payload))};
+    const matches=row=>row.id===id&&row.text===record.text&&row.hash===record.hash&&row.span===record.span&&row.sample===false&&row.parentId===source.id&&row.helperEventId===event.id&&row.helperEventHash===event.hash&&(selection===null?!Object.hasOwn(row,'helperSelection'):validHelperSelection(row.helperSelection)&&row.helperSelection.field===selection.field&&row.helperSelection.index===selection.index);
     const previous=state.captures.find(c=>c.id===id);if(previous){await validateCapture(previous);if(!matches(previous)||validateHelperProposal(previous,state)!=='verified')throw Error('The earlier helper proposal needs source recovery.');}
     const actual=await db.run(['meta','captures','quarantine','spans',...REVIEW_TABLES],'readwrite',async tx=>{
       if(await meta(tx,'epoch')!==state.epoch)throw Error('The workspace changed. Your saved answer is kept.');

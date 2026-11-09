@@ -12,7 +12,7 @@ test('opened receipts integrate with unchanged NOW and backup10; restoring backu
   const old = structuredClone(before); old.version = 9;delete old.threadReviews;delete old.helperEvents; delete old.sourceRevisions; delete old.personEvents; delete old.contactReceipts; delete old.openedReceipts; const oldBackup = JSON.stringify({ payload: old, sha256: await sha256(JSON.stringify(old)) });
   const receipts = await store.markOpened({ items: [item(source)] }); await store.restore(oldBackup); assert.deepEqual((await store.read()).openedReceipts, receipts);
   const target = createStore(options()), backup = await store.exportData(); await target.restore(backup); await target.restore(backup);
-  const restored = await target.read(); assert.equal(restored.version, 15); assert.deepEqual(restored.openedReceipts, receipts); assert.deepEqual(restored.now, before.now); assert.deepEqual(restored.captures, before.captures);
+  const restored = await target.read(); assert.equal(restored.version, 16); assert.deepEqual(restored.openedReceipts, receipts); assert.deepEqual(restored.now, before.now); assert.deepEqual(restored.captures, before.captures);
   const oldTarget = createStore(options()); await oldTarget.restore(oldBackup); assert.deepEqual((await oldTarget.read()).openedReceipts, []); await oldTarget.close(); await target.close(); await store.close();
 });
 test('independent opening timestamps merge without duplicating or replacing existing receipts', async () => {

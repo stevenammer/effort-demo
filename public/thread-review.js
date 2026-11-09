@@ -3,11 +3,8 @@ import { exactKeys, validId, validDate, validHash, sha256, same, IntegrityError 
 import { seal, noteAllowed } from './intent.js';
 
 export const REVIEW_TABLES = Object.freeze(['threadReviews', 'helperEvents']);
-export const THREAD_RESULTS = Object.freeze(['ANSWER','DECISION','OPTIONS','RESEARCH','QUESTIONS','PROPOSAL','NO_ACTION','BLOCKED']);
-export const HELPER_ROLES = Object.freeze({
-  critic: Object.freeze({label:'Plan reviewer', purpose:'Check the plan, assumptions, risks and what would make a concern wrong.'}),
-  starter: Object.freeze({label:'First-step helper', purpose:'Find an optional small beginning grounded in the selected writing, without flattery or judgments about the person.'}),
-});
+import { THREAD_RESULTS, HELPER_ROLES, sourceOrigin, validSourceOrigin, validateHelperEnvelope, HELPER_OUTCOME_RESERVE } from './helper-contract.js';
+export { THREAD_RESULTS, HELPER_ROLES } from './helper-contract.js';
 export const REVIEW_LIMITS = Object.freeze({reviews:1000, events:10000, bytes:8*1024*1024, context:12, text:4000, contextBytes:24000});
 export function companionURL(value) {
   try { const u=new URL(value); return u.protocol==='http:' && ['127.0.0.1','localhost'].includes(u.hostname) && u.port && !u.username && !u.password && !u.search && !u.hash && u.pathname==='/' ? u.origin : null; } catch { return null; }
@@ -31,7 +28,7 @@ async function checkSeal(row,keys) {
 export async function validateReview(row) {
   await checkSeal(row,['id','sourceId','context','question','requestedResult','invited','route','state','at']);
   if(!validId(row.id)||!validId(row.sourceId)||!noteAllowed(row.question,true)||row.question.length>2000||!THREAD_RESULTS.includes(row.requestedResult)||!['CANDIDATE','REVIEW'].includes(row.state)||!validDate(row.at)||!validReviewRoute(row.route)||!Array.isArray(row.invited)||row.invited.length>2||new Set(row.invited).size!==row.invited.length||row.invited.some(id=>!Object.hasOwn(HELPER_ROLES,id))||row.invited.length&&!row.route||!Array.isArray(row.context)||!row.context.length||row.context.length>REVIEW_LIMITS.context||new Set(row.context.map(c=>c?.captureId)).size!==row.context.length||row.context[0]?.captureId!==row.sourceId||size(row.context)>REVIEW_LIMITS.contextBytes) throw new IntegrityError('A THREAD review has invalid content, context or authority.');
-  for(const c of row.context) if(!exactKeys(c,['captureId','captureHash','text'])||!validId(c.captureId)||!validHash(c.captureHash)||!noteAllowed(c.text,true)||c.text.length>4000||await sha256(c.text)!==c.captureHash) throw new IntegrityError('A THREAD context snapshot cannot be verified.');
+  for(const c of row.context) if(!(exactKeys(c,['captureId','captureHash','text'])||exactKeys(c,['captureId','captureHash','text','origin'])&&validSourceOrigin(c.origin))||!validId(c.captureId)||!validHash(c.captureHash)||!noteAllowed(c.text,true)||c.text.length>4000||await sha256(c.text)!==c.captureHash) throw new IntegrityError('A THREAD context snapshot cannot be verified.');
 }
 function history(events,reviewId,role) {
   const rows=events.filter(e=>e.reviewId===reviewId&&e.role===role);if(!rows.length)return [];
@@ -47,13 +44,15 @@ export function helperState(state,reviewId,role) {
   return {status:unknown?'recovery':rows.at(-1)?.status??'queued',latestId:rows.at(-1)?.id??null,attempt:rows.at(-1)?.attempt??0,history:rows,latest:rows.at(-1)??null};
 }
 export function reviewContextStatus(review,state) {
-  return review.context.every(c=>state.captures.some(row=>row.id===c.captureId&&row.hash===c.captureHash&&row.text===c.text))?'verified':'recovery';
+  return review.context.every(c=>state.captures.some(row=>row.id===c.captureId&&row.hash===c.captureHash&&row.text===c.text&&(!Object.hasOwn(c,'origin')||same(c.origin,sourceOrigin(row)))))?'verified':'recovery';
 }
 async function validateEvent(row,reviews,recovery=[]) {
-  await checkSeal(row,['id','reviewId','reviewHash','role','previousId','attempt','status','output','error','model','at']);
+  if(!row||typeof row!=='object'||Array.isArray(row))throw new IntegrityError('A helper event has an invalid record shape.');
+  const keys=['id','reviewId','reviewHash','role','previousId','attempt','status','output','error','model','at'];const structured=Object.hasOwn(row,'result')||Object.hasOwn(row,'rawResponse')||Object.hasOwn(row,'receipt');
+  await checkSeal(row,structured?[...keys,'result','rawResponse','receipt']:keys);
   if(!validId(row.id)||!validId(row.reviewId)||!validHash(row.reviewHash)||!Object.hasOwn(HELPER_ROLES,row.role)||!(row.previousId===null||validId(row.previousId))||!Number.isSafeInteger(row.attempt)||row.attempt<1||row.attempt>20||!['running','done','failed','stopped'].includes(row.status)||!noteAllowed(row.output)||row.output.length>4000||!noteAllowed(row.error)||row.error.length>1000||typeof row.model!=='string'||row.model.length>120||!validDate(row.at))throw new IntegrityError('A helper event has invalid content.');
   if(row.status==='done'? !row.output.trim()||row.error!==''||!row.model : row.output!==''||row.model!==''||(['failed','stopped'].includes(row.status)?!row.error.trim():row.error!==''))throw new IntegrityError('A helper status does not match its result.');
-  const review=reviews.find(r=>r.id===row.reviewId);if(!review){if(!recovery.some(r=>r.source==='threadReviews'&&r.recordId===row.reviewId))throw new IntegrityError('A helper has no approved review.');}else if(row.reviewHash!==review.hash)throw new IntegrityError('A helper result belongs to a different approved review.');else if(row.status==='done'&&row.model!==review.route?.model)throw new IntegrityError('A helper result claims a different model.');else if(!review.invited.includes(row.role))throw new IntegrityError('An uninvited role cannot reply.');
+  const review=reviews.find(r=>r.id===row.reviewId);if(structured){if(row.status!=='done'&&(row.result!==null||row.rawResponse!==''||row.receipt!==null))throw new IntegrityError('An unfinished helper cannot claim a result receipt.');await validateHelperEnvelope(row,review??null,row.role);if(row.result!==null&&row.result.text!==row.output)throw new IntegrityError('Helper answer differs from its structured result.');}if(!review){if(!recovery.some(r=>r.source==='threadReviews'&&r.recordId===row.reviewId))throw new IntegrityError('A helper has no approved review.');}else if(row.reviewHash!==review.hash)throw new IntegrityError('A helper result belongs to a different approved review.');else if(row.status==='done'&&row.model!==review.route?.model)throw new IntegrityError('A helper result claims a different model.');else if(!review.invited.includes(row.role))throw new IntegrityError('An uninvited role cannot reply.');
 }
 export async function validateReviewState(state) {
   for(const [table,max]of [['threadReviews',REVIEW_LIMITS.reviews],['helperEvents',REVIEW_LIMITS.events]])if(!Array.isArray(state[table])||state[table].length>max||new Set(state[table].map(e=>e?.id)).size!==state[table].length)throw new IntegrityError('Invalid or oversized THREAD history.');
@@ -62,6 +61,7 @@ export async function validateReviewState(state) {
   for(const row of state.helperEvents)await validateEvent(row,state.threadReviews,state.recovery);
   for(const reviewId of new Set(state.helperEvents.map(e=>e.reviewId)))for(const role of Object.keys(HELPER_ROLES))history(state.helperEvents,reviewId,role);
 }
+function ensureAnswerRoom(state) {const running=state.helperEvents.filter(e=>e.status==='running'&&helperState(state,e.reviewId,e.role).latestId===e.id).length;if(size(REVIEW_TABLES.map(t=>state[t]))+running*HELPER_OUTCOME_RESERVE>REVIEW_LIMITS.bytes)throw Error('THREAD history needs room for a verified answer before inference. Download a backup; no call was started.');}
 export function createThreadReview({db,ready=async()=>{},notify=()=>{},recoveryRecord,validateCapture}) {
   async function snapshot(){await ready();return db.run(['meta','captures','quarantine',...REVIEW_TABLES],'readonly',async tx=>({epoch:await meta(tx,'epoch'),captures:await request(tx.objectStore('captures').getAll()),recovery:await request(tx.objectStore('quarantine').getAll()),threadReviews:await request(tx.objectStore('threadReviews').getAll()),helperEvents:await request(tx.objectStore('helperEvents').getAll())}));}
   async function fence(tx,state,checkCaptures=true){if(await meta(tx,'epoch')!==state.epoch)throw Error('The workspace changed. Reopen THREAD before continuing.');for(const [t,rows]of [...(checkCaptures?[['captures',state.captures]]:[]),['quarantine',state.recovery],...REVIEW_TABLES.map(t=>[t,state[t]])])if(!same(await request(tx.objectStore(t).getAll()),rows))throw Error('THREAD changed in another tab. Refresh before continuing.');}
@@ -69,12 +69,12 @@ export function createThreadReview({db,ready=async()=>{},notify=()=>{},recoveryR
   async function create(input,{requestId=crypto.randomUUID(),expectedEpoch}={}) {
     const state=await snapshot();if(expectedEpoch!==undefined&&expectedEpoch!==(state.epoch??null))throw Error('The workspace changed. Reopen THREAD.');await validateReviewState(state);
     if(!validId(requestId)||!Array.isArray(input.contextIds)||new Set(input.contextIds).size!==input.contextIds.length)throw Error('Choose exact saved context for THREAD.');
-    const context=[];for(const id of input.contextIds){const c=state.captures.find(row=>row.id===id);if(!c)throw Error('Selected context needs source recovery.');await validateCapture(c);context.push({captureId:c.id,captureHash:c.hash,text:c.text});}
+    const context=[];for(const id of input.contextIds){const c=state.captures.find(row=>row.id===id);if(!c)throw Error('Selected context needs source recovery.');await validateCapture(c);context.push({captureId:c.id,captureHash:c.hash,text:c.text,origin:sourceOrigin(c)});}
     const record=await seal({id:requestId,sourceId:input.sourceId,context,question:input.question,requestedResult:input.requestedResult,invited:input.invited,route:input.route,state:input.state??'REVIEW',at:new Date().toISOString()});await validateReview(record);
-    const prior=state.threadReviews.find(row=>row.id===record.id);if(prior){const strip=({at,hash,...rest})=>rest;if(!same(strip(prior),strip(record)))throw Error('This request ID already belongs to different approved context.');return verified('threadReviews',prior,state);}
-    await validateReviewState({...state,threadReviews:[...state.threadReviews,record]});await db.run(['meta','captures','quarantine',...REVIEW_TABLES],'readwrite',async tx=>{await fence(tx,state);await request(tx.objectStore('threadReviews').add(record));await request(tx.objectStore('meta').put({key:'initialized',value:true}));});return verified('threadReviews',record,state);
+    const prior=state.threadReviews.find(row=>row.id===record.id);if(prior){const strip=({at,hash,...rest})=>rest;const compared={...record,context:record.context.map((c,i)=>{if(!Object.hasOwn(prior.context[i]??{},'origin')){const{origin,...legacy}=c;return legacy;}return c;})};if(!same(strip(prior),strip(compared)))throw Error('This request ID already belongs to different approved context.');return verified('threadReviews',prior,state);}
+    const proposed={...state,threadReviews:[...state.threadReviews,record]};await validateReviewState(proposed);ensureAnswerRoom(proposed);await db.run(['meta','captures','quarantine',...REVIEW_TABLES],'readwrite',async tx=>{await fence(tx,state);await request(tx.objectStore('threadReviews').add(record));await request(tx.objectStore('meta').put({key:'initialized',value:true}));});return verified('threadReviews',record,state);
   }
-  async function transition(reviewId,role,status,{expectedLatestId=null,output='',error='',model='',expectedEpoch}={}) {
+  async function transition(reviewId,role,status,{expectedLatestId=null,output='',error='',model='',result=null,rawResponse='',receipt=null,expectedEpoch}={}) {
     const state=await snapshot();if(expectedEpoch!==undefined&&expectedEpoch!==(state.epoch??null))throw Error('The workspace changed. Reopen THREAD.');await validateReviewState(state);
     const review=state.threadReviews.find(row=>row.id===reviewId);if(!review||!review.invited.includes(role))throw Error('This role has no approved THREAD invitation.');const current=helperState(state,reviewId,role);
     if(current.status==='recovery')throw Error('Helper history needs recovery. No call was started.');if(current.latestId!==expectedLatestId)throw Error('The helper attempt changed. Refresh before continuing.');
@@ -83,7 +83,7 @@ export function createThreadReview({db,ready=async()=>{},notify=()=>{},recoveryR
       if(reviewContextStatus(review,state)!=='verified')throw Error('Approved context needs recovery before it can leave this browser.');for(const c of review.context)await validateCapture(state.captures.find(row=>row.id===c.captureId));
       if(state.helperEvents.some(e=>e.status==='running'&&helperState(state,e.reviewId,e.role).latestId===e.id))throw Error('Another helper is running. Stop or finish that attempt first.');
     }else if(current.status!=='running')throw Error('Only a running attempt can receive an outcome.');
-    const record=await seal({id:crypto.randomUUID(),reviewId,reviewHash:review.hash,role,previousId:current.latestId,attempt:current.attempt+(status==='running'?1:0),status,output,error,model,at:new Date().toISOString()});await validateReviewState({...state,helperEvents:[...state.helperEvents,record]});
+    const record=await seal({id:crypto.randomUUID(),reviewId,reviewHash:review.hash,role,previousId:current.latestId,attempt:current.attempt+(status==='running'?1:0),status,output,error,model,result,rawResponse,receipt,at:new Date().toISOString()});const proposed={...state,helperEvents:[...state.helperEvents,record]};await validateReviewState(proposed);if(status==='running')ensureAnswerRoom(proposed);
     await db.run(['meta','captures','quarantine',...REVIEW_TABLES],'readwrite',async tx=>{await fence(tx,state,status==='running');await request(tx.objectStore('helperEvents').add(record));});return verified('helperEvents',record,state);
   }
   async function repair(){const state=await snapshot(),bad=[];for(const row of state.threadReviews){try{await validateReview(row);}catch(error){if(!(error instanceof IntegrityError))throw error;bad.push({table:'threadReviews',row,reason:error.message});}}
