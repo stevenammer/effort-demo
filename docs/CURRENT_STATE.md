@@ -151,3 +151,11 @@ Provider/voice transcript provenance; neutral THREAD review and functional bound
 ## Boundaries
 
 Public repository pushes are authorized for this demo. Private Android data/runtime and personal writing are separate. No phone build/install, private backend deployment, paid provider calls, real messages or external actions are part of this work. Public examples stay synthetic. Keep the home calm and the depth in Attention Spans; thoughts become work only through explicit human choice.
+
+## Shared-core portable export, S2
+
+The common `effort-export/1` format covers shared-adapter captures, metadata, derived views and separate quarantine recovery records. File and IndexedDB stores exchange deterministic bundles and re-export identical bytes into a clean destination. Import is add-only, refuses conflicting originals, preserves destination-derived updates with a report, and retains quarantined raw data without making it actionable. The existing full browser-workspace backup and native phone remain separate. See EFFORT_EXPORT.md for the envelope schema and semantic verification API.
+
+Independent verification found and repaired cross-locale ordering, a misleading metadata fixture and dropped metadata at capture creation, quarantine loss and same-source quarantine duplication, and unsafe wall-clock boot detection. Linux lock recovery now uses OS boot identity and process start ticks; unknown legacy/platform cases retain live owners conservatively. CLI backup publication is atomic, refuses capture-store aliases, restricts new backup permissions, bounds reads and refuses invalid UTF-8. Test-only Ajv checks the envelope against JSON Schema2020-12; runtime code has no new dependencies.
+
+The full relevant suite passes328 tests with zero skips. All22 tested mutations are killed after bounding the mutation harness and adding valid, correctly rehashed corruption/size cases. Harness failure or outer timeout cannot count as a killed mutation. A redundant single-guard truncation mutation was removed: the parser and canonical JSONL check independently refuse unterminated entries, which remain tested with rehashed payloads. This verifies S2, not the remaining storage, helper, Android or private-app integration slices.

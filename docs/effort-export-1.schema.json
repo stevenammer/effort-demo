@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effort.example/schema/effort-export-1.schema.json",
+  "title": "E.F.F.O.R.T. portable export v1 envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest", "manifestSha256", "entries"],
+  "properties": {
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "entries"],
+      "properties": {
+        "format": { "const": "effort-export/1" },
+        "entries": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "prefixItems": [
+            { "$ref": "#/$defs/captureMeta" },
+            { "$ref": "#/$defs/derivedMeta" },
+            { "$ref": "#/$defs/quarantineMeta" }
+          ]
+        }
+      }
+    },
+    "manifestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "entries": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "prefixItems": [
+        { "$ref": "#/$defs/captureEntry" },
+        { "$ref": "#/$defs/derivedEntry" },
+        { "$ref": "#/$defs/quarantineEntry" }
+      ]
+    }
+  },
+  "$defs": {
+    "meta": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "count", "bytes", "sha256"],
+      "properties": {
+        "path": { "enum": ["captures.jsonl", "derived.jsonl", "quarantine.jsonl"] },
+        "count": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "captureMeta": { "allOf": [{ "$ref": "#/$defs/meta" }], "properties": { "path": { "const": "captures.jsonl" } } },
+    "derivedMeta": { "allOf": [{ "$ref": "#/$defs/meta" }], "properties": { "path": { "const": "derived.jsonl" } } },
+    "quarantineMeta": { "allOf": [{ "$ref": "#/$defs/meta" }], "properties": { "path": { "const": "quarantine.jsonl" } } },
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "text"],
+      "properties": { "path": { "enum": ["captures.jsonl", "derived.jsonl", "quarantine.jsonl"] }, "text": { "type": "string" } }
+    },
+    "captureEntry": { "allOf": [{ "$ref": "#/$defs/entry" }], "properties": { "path": { "const": "captures.jsonl" } } },
+    "derivedEntry": { "allOf": [{ "$ref": "#/$defs/entry" }], "properties": { "path": { "const": "derived.jsonl" } } },
+    "quarantineEntry": { "allOf": [{ "$ref": "#/$defs/entry" }], "properties": { "path": { "const": "quarantine.jsonl" } } }
+  }
+}

@@ -8,6 +8,7 @@ The thinking behind E.F.F.O.R.T., as a small library with no dependencies. It's 
 
 | Module | What it does |
 |---|---|
+| `export` | Deterministic `effort-export/1` bundles, per-entry and manifest hashes, verification, add-only restore and quarantine preservation. |
 | `capture` | Save-first records. `createCapture` keeps the exact original text and its SHA-256. `verifySaved` reads it back and re-hashes it, so you never say SAVED unless the saved bytes match. |
 | `ef` | The organizer. Turns a pile of text into DO, WAITING ON, QUESTIONS, IDEAS and NOTES, keeping every exact quote. It's deterministic and conservative, with no model and no network. |
 | `semantic` | The sentence classifier that `ef` uses. When it isn't sure, it says `unclear` instead of guessing. |

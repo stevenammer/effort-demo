@@ -19,10 +19,10 @@ The shared logic is also available inside this repository:
 - [`packages/core`](packages/core): exact capture and readback verification, organization,
   safe reading and NOW selection, with no runtime dependencies.
 - [`packages/storage`](packages/storage): append-only JSONL-file and IndexedDB adapters.
-- [`apps/cli`](apps/cli): capture, list, NOW and verification from the command line.
+- [`apps/cli`](apps/cli): capture, list, NOW, verification and portable export/restore from the command line.
 
 The browser uses a generated copy of the core, checked for drift. This is an alpha library;
-its common export format and further integration slices are still being specified.
+its [portable export format](docs/EFFORT_EXPORT.md) preserves shared-store originals, metadata, views and quarantined recovery data. Further integration slices remain open.
 The package READMEs show how to use the code from this repository.
 
 ## How it was built

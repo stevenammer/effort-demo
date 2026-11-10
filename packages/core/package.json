@@ -8,6 +8,7 @@
     "./ef": "./ef.js",
     "./now": "./now.js",
     "./readable": "./readable.js",
-    "./semantic": "./semantic.js"
+    "./semantic": "./semantic.js",
+    "./export": "./export.js"
   }
 }

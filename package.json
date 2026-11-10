@@ -18,6 +18,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "ajv": "8.18.0",
     "fake-indexeddb": "6.2.7"
   }
 }
