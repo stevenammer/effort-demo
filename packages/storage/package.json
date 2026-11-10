@@ -5,6 +5,7 @@
   "license": "MIT",
   "exports": {
     "./file": "./file.js",
-    "./indexeddb": "./indexeddb.js"
+    "./indexeddb": "./indexeddb.js",
+    "./sqlite": "./sqlite.js"
   }
 }

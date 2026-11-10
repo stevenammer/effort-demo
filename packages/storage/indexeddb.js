@@ -1,12 +1,10 @@
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
+import { copySnapshot, ordered } from './records.js';
 function request(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || Error('Database request failed.'));
   });
-}
-function ordered(records) {
-  return records.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
 }
 export function createIndexedDbStore({ factory = globalThis.indexedDB, name = 'effort-core' } = {}) {
   if (!factory) throw Error('IndexedDB is unavailable.');
@@ -37,10 +35,16 @@ export function createIndexedDbStore({ factory = globalThis.indexedDB, name = 'e
     });
   }
   return {
-    append: (record) => run('captures', 'readwrite', (tx) => request(tx.objectStore('captures').add(record))),
-    get: (id) => run('captures', 'readonly', (tx) => request(tx.objectStore('captures').get(id))),
+    async append(record) {
+      record = structuredClone(record);
+      return run('captures', 'readwrite', (tx) => request(tx.objectStore('captures').add(record)));
+    },
+    get: async (id) => (await run('captures', 'readonly', (tx) => request(tx.objectStore('captures').get(id)))) ?? null,
     list: async () => ordered(await run('captures', 'readonly', (tx) => request(tx.objectStore('captures').getAll()))),
-    putDerived: (record) => run('derived', 'readwrite', (tx) => request(tx.objectStore('derived').put(record))),
+    async putDerived(record) {
+      record = structuredClone(record);
+      return run('derived', 'readwrite', (tx) => request(tx.objectStore('derived').put(record)));
+    },
     async export() { return JSON.stringify({ captures: await this.list() }); },
     exportBundle(hash) { return createExport(this, hash); },
     verifyBundle(input, hash) { return verifyExport(input, hash); },
@@ -49,7 +53,10 @@ export function createIndexedDbStore({ factory = globalThis.indexedDB, name = 'e
       const [captures, derived, quarantine] = await Promise.all(['captures', 'derived', 'quarantine'].map((name) => request(tx.objectStore(name).getAll())));
       return { captures, derived, quarantine };
     }),
-    importSnapshot: (incoming, { sourceQuarantine = [] } = {}) => run(['captures', 'derived', 'quarantine'], 'readwrite', async (tx) => {
+    async importSnapshot(incoming, { sourceQuarantine = [] } = {}) {
+      incoming = copySnapshot(incoming);
+      sourceQuarantine = structuredClone(sourceQuarantine);
+      return run(['captures', 'derived', 'quarantine'], 'readwrite', async (tx) => {
       const stores = ['captures', 'derived'];
       const existing = await Promise.all(stores.map((name) => request(tx.objectStore(name).getAll())));
       const captureMap = new Map(existing[0].map((record) => [record.id, canonical(record)]));
@@ -70,7 +77,8 @@ export function createIndexedDbStore({ factory = globalThis.indexedDB, name = 'e
       const current = { captures: existing[0], derived: existing[1], quarantine: await request(quarantine.getAll()) };
       for (const record of quarantineToAppend(current, incoming.quarantine ?? [], sourceQuarantine)) quarantine.add(record);
       return { keptExisting };
-    }),
+      });
+    },
     async close() { (await opening).close(); },
   };
 }

@@ -18,7 +18,7 @@ The shared logic is also available inside this repository:
 
 - [`packages/core`](packages/core): exact capture and readback verification, organization,
   safe reading and NOW selection, with no runtime dependencies.
-- [`packages/storage`](packages/storage): append-only JSONL-file and IndexedDB adapters.
+- [`packages/storage`](packages/storage): append-only JSONL-file, IndexedDB and SQLite adapters with a shared conformance suite.
 - [`apps/cli`](apps/cli): capture, list, NOW, verification and portable export/restore from the command line.
 
 The browser uses a generated copy of the core, checked for drift. This is an alpha library;
@@ -33,7 +33,7 @@ I wrote the specs and decisions, agents wrote most of the code, and I red-teamed
 
 ## Try it locally
 
-Needs Node 20.20 or newer. There are no runtime package dependencies. Tests use fake-indexeddb to exercise real transaction boundaries without a browser.
+Needs Node 20.20 or newer. SQLite's default built-in driver additionally needs a runtime with `node:sqlite` (tested on Node 22.23.4); Node 20 callers can inject a compatible synchronous connection or keep using file/IndexedDB. There are no runtime package dependencies. Tests use fake-indexeddb to exercise transaction boundaries without a browser and native SQLite when available. See [storage support limits](packages/storage/README.md#sqlite-support-and-ownership).
 
 ```sh
 npm ci

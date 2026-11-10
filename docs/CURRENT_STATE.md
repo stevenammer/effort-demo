@@ -4,7 +4,15 @@
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.
 
-The release history below is a dev log; check the repository for the current tip. Exact correction/transcript proposals join separate source revisions, FORT/live EF, People, opening context, thinking, connected files and exploration proposals. Schema11 / backup13 imports1..12. The active checkout is **feature/thread-review-20261109**, an unpublished schema15/backup17 continuation. Inspect actual Git state before resuming.
+The release history below is a dev log; check the repository for the current tip. The thread-review continuation and S1/S2 open core are published on main. The browser demo and its whole-workspace backups remain separate from the portable core export. Inspect actual Git state before resuming.
+
+## Shared storage adapters, S3
+
+The shared core now has file, IndexedDB and SQLite adapters, with a reusable conformance suite and transfers between every adapter pair. SQLite stores captures, derived views and quarantine in separate tables and restores them in one transaction. New databases use private file permissions. The default SQLite driver requires Node 22 with `node:sqlite`; Node 20 keeps file/IndexedDB support and can inject a compatible synchronous SQLite connection. See [storage support and ownership](../packages/storage/README.md).
+
+This slice also makes missing IndexedDB records return `null`, uses locale-independent ordering and copies write inputs before waiting. The browser demo, CLI storage choice and native phone app have no migration in this slice.
+
+Independent release checks: 361 tests pass with no skips on Node 22.23.4. Real Chrome IndexedDB preserves input isolation, ordering, portable round trips, destination views and reopen persistence. Three separate SQLite writer processes retain all 60 synthetic captures; a blocked write rejects after the bounded busy timeout without changing data, and writing resumes after unlock. Nine deliberate storage faults are caught by the shared and SQLite tests, including partial rollback, missing quarantine, Unicode key loss, duplicate import IDs and public file permissions. A second-model review found the duplicate-import issue; every adapter now rejects that batch before writing.
 
 The ongoing objective is to bring E.F.F.O.R.T. close to its full product vision so other people can use it in their own way and inspect the thinking behind it. A polished classified-text demonstration does not meet that objective. `TODO.md` and `docs/PARITY.md` retain the full map. The public individual experience and the organizational See / Spec / Send product remain separate.
 

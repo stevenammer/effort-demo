@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname, uptime } from 'node:os';
 import { dirname } from 'node:path';
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
+import { copySnapshot, ordered } from './records.js';
 
 const WAIT_MS = 25;
 const READ_ATTEMPTS = 8;
@@ -31,10 +32,6 @@ async function rows(file, attempts = READ_ATTEMPTS) {
     if (unfinished && attempt + 1 < attempts) await pause();
   }
   throw Error(`Storage JSONL write did not finish: ${file}`);
-}
-
-function ordered(records) {
-  return records.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
 }
 
 function snapshotRows(data) {
@@ -237,6 +234,7 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
   }
 
   async function write(kind, value) {
+    value = structuredClone(value);
     return locked(async () => {
       if (kind === 'capture' && (await rows(file)).some((row) => row.kind === kind && row.value.id === value.id)) {
         throw Error('Capture ID collision.');
@@ -261,7 +259,10 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
     verifyBundle(input, hash) { return verifyExport(input, hash); },
     restoreBundle(input, hash) { return restoreExport(this, input, hash); },
     snapshot: () => locked(async () => snapshotRows(await rows(file))),
-    importSnapshot: (incoming, { sourceQuarantine = [] } = {}) => locked(async () => {
+    async importSnapshot(incoming, { sourceQuarantine = [] } = {}) {
+      incoming = copySnapshot(incoming);
+      sourceQuarantine = structuredClone(sourceQuarantine);
+      return locked(async () => {
       const data = await rows(file);
       const current = snapshotRows(data);
       const additions = [];
@@ -295,6 +296,7 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
         await rename(temp, file);
       } finally { await rm(temp, { force: true }); }
       return { keptExisting };
-    }),
+      });
+    },
   };
 }

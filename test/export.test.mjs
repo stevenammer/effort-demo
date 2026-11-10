@@ -356,13 +356,10 @@ test('dead lock owner is recovered and live lock owner is never displaced', asyn
   const { directory, store } = await tempFileStore('effort-lock-liveness-');
   const file = join(directory, 'captures.jsonl');
   const lock = `${file}.lock`;
-  const moduleUrl = JSON.stringify(new URL('../packages/storage/file.js', import.meta.url).href);
-  const holder = `import {createFileStore} from ${moduleUrl}; ` +
-    `const blocker=new Int32Array(new SharedArrayBuffer(4)); ` +
-    `const record={id:'holder',text:'x',hash:'${'0'.repeat(64)}',` +
-    `createdAt:'2026-01-01T00:00:00.000Z'}; ` +
-    `Object.defineProperty(record,'text',{get(){Atomics.wait(blocker,0,0,10000);return 'x';}}); ` +
-    `await createFileStore(process.argv[1]).append(record);`;
+  const holder = `import {mkdir,writeFile} from 'node:fs/promises'; import {hostname} from 'node:os'; ` +
+    `const lock=process.argv[1]+'.lock'; await mkdir(lock); ` +
+    `await writeFile(lock+'/owner.json',JSON.stringify({pid:process.pid,hostname:hostname(),token:'synthetic-holder',createdAt:new Date().toISOString()})); ` +
+    `await new Promise(resolve=>setTimeout(resolve,10000));`;
   let child;
   try {
     child = spawn(process.execPath, ['--input-type=module', '-e', holder, file], { env: childEnv, stdio: 'ignore' });
