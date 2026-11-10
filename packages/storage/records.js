@@ -1,3 +1,5 @@
+import { checkRecord, checkSnapshotRecords } from '../core/records.js';
+
 /** Use UTF-16 code-unit ordering everywhere, independent of machine locale. */
 export function ordered(records) {
   const compare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
@@ -5,6 +7,8 @@ export function ordered(records) {
 }
 
 export function validateCas(id, expected, replacement) {
+  if (replacement) checkRecord(replacement);
+  if (expected) checkRecord(expected);
   if (typeof id !== 'string' || !id || !replacement || replacement.id !== id ||
       (expected !== null && (!expected || expected.id !== id))) throw Error('Invalid derived compare-and-swap records.');
   return [expected === null ? null : structuredClone(expected), structuredClone(replacement)];
@@ -12,6 +16,7 @@ export function validateCas(id, expected, replacement) {
 
 /** A direct import must not create two originals or two versions of a view. */
 export function copySnapshot(incoming) {
+  checkSnapshotRecords(incoming);
   const copy = structuredClone(incoming);
   for (const kind of ['captures', 'derived']) {
     if (!Array.isArray(copy?.[kind])) throw Error(`Invalid ${kind} snapshot.`);

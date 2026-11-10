@@ -14,8 +14,8 @@ node apps/cli/effort.mjs recover-lock --force
 ```
 
 - `capture` saves the exact text, reads it back, and only then prints `SAVED`.
-- `list` shows what you've saved, oldest first.
-- `suggest` offers a ranking of captures. A suggestion is not a commitment.
+- `list` shows what you've saved, oldest first. If a saved text no longer matches the check I recorded when I saved it, `list` still shows it, marks it with a warning, and tells you how many items failed.
+- `suggest` offers a ranking of captures. A suggestion is not a commitment. It leaves out any item that fails its check and says so.
 - `promote <captureId> <start> <end>` explicitly commits the exact UTF-16 slice of a verified capture. `commitments` lists its history's current states.
 - `activate <id>` deliberately selects the single active commitment shown by `now`.
 - `complete <id> <note>` records the exact note as a self-report; `drop <id> <reason>` keeps the reason.
@@ -28,8 +28,10 @@ node apps/cli/effort.mjs recover-lock --force
 - `restore` validates every record and hash before it changes storage. A capture
   collision fails without adding records. A changed derived record stays in the
   destination and is reported. Matching records are a no-op.
-- `recover-lock` only clears a lock held by a dead same-host process. `--force` is required when ownership is unknown.
+- `recover-lock` clears a lock only when its owner is gone. Without `--force` it clears a lock held by a dead process on this computer. With `--force` it also clears a lock whose owner I can't work out (the owner file is missing or unreadable, or the lock came from another computer). It never clears a lock whose owner is still running on this computer. If there's no lock at all, it says so and changes nothing.
   When available, the OS boot ID and process start ticks help detect a reused PID. Wall-clock boot time is diagnostic only; elsewhere a live PID is treated conservatively. A lock is never cleared for age alone.
+
+If `recover-lock --force` refuses because a lock's process number has been reused, and your machine has no Linux boot ID to prove the old process is gone, I can't tell the old owner from the new one. Close every program that uses the store, then delete the `<store>.lock` folder by hand. For the default store that's `captures.jsonl.lock` next to `captures.jsonl`. Your captures aren't in that folder.
 
 Your data goes in `EFFORT_HOME`, or in a local `.effort` folder if you don't set it. That folder is git-ignored.
 

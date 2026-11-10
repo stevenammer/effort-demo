@@ -79,6 +79,28 @@ async function publishBundle(target, storePath, bundle, overwrite) {
   }
 }
 
+const DAMAGED_NOTE = 'WARNING: this text no longer matches what was saved';
+
+async function matchesSavedHash(record) {
+  return typeof record?.text === 'string' && await hash(record.text) === record.hash;
+}
+
+/** Split saved items into those whose text still matches its recorded hash and those that do not. */
+async function checkOriginals(records) {
+  const intact = [], damaged = [];
+  for (const record of records) (await matchesSavedHash(record) ? intact : damaged).push(record);
+  return { intact, damaged };
+}
+
+function damagedLines(damaged, total) {
+  if (!damaged.length) return [];
+  return [`${damaged.length} of ${total} saved items failed their check. Run effort verify for the list.`];
+}
+
+async function lockIsPresent(storePath) {
+  return Boolean(await statIfPresent(`${storePath}.lock`));
+}
+
 export async function runCli(args, { home, output = console.log } = {}) {
   const [command, ...words] = args;
   const directory = home || join(process.cwd(), '.effort');
@@ -87,6 +109,10 @@ export async function runCli(args, { home, output = console.log } = {}) {
   if (command === 'recover-lock') {
     if (words.length > 1 || (words.length === 1 && words[0] !== '--force')) {
       throw Error('Usage: effort recover-lock [--force]');
+    }
+    if (!await lockIsPresent(storePath)) {
+      output('There is no lock to recover. Nothing was changed.');
+      return;
     }
     const result = await recoverFileLock(storePath, { force: words[0] === '--force' });
     output(`RECOVERED LOCK ${result.reason}`);
@@ -107,7 +133,10 @@ export async function runCli(args, { home, output = console.log } = {}) {
     return;
   }
   if (command === 'list') {
-    for (const record of await store.list()) output(`${record.id}\t${record.text}`);
+    const records = await store.list();
+    const { damaged } = await checkOriginals(records);
+    for (const record of records) output(`${record.id}\t${damaged.includes(record) ? `[${DAMAGED_NOTE}] ` : ''}${record.text}`);
+    for (const line of damagedLines(damaged, records.length)) output(line);
     return;
   }
   const continuity = createContinuity({ store, hash, now: () => new Date().toISOString(), id: randomUUID });
@@ -121,8 +150,12 @@ export async function runCli(args, { home, output = console.log } = {}) {
   }
   if (command === 'suggest') {
     if (words.length) throw Error('Usage: effort suggest');
-    const selection = chooseNow(await store.list());
+    const records = await store.list();
+    const { intact, damaged } = await checkOriginals(records);
+    const selection = chooseNow(intact);
     output(selection.item ? `SUGGESTION (not a commitment)\n${selection.item.quote}\n${selection.reason}` : 'No suggestion.');
+    for (const record of damaged) output(`Left out: ${record.id}. ${DAMAGED_NOTE}, so I won't suggest from it.`);
+    for (const line of damagedLines(damaged, records.length)) output(line);
     return;
   }
   if (command === 'commitments') {

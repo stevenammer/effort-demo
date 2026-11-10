@@ -57,4 +57,9 @@ deletion, so it cannot permanently block the store. If ownership can't be determ
 inspect the named lock path and run `effort recover-lock --force` only when it is safe
 to remove an unknown abandoned lock.
 
+On a machine without a Linux boot ID, a lock whose process number has been reused can look alive, and
+`recover-lock --force` refuses to remove it. In that case, close every program that uses the store, then delete the
+`<store>.lock` folder by hand (for the default store, `captures.jsonl.lock`). The captures themselves live in the
+store file, not in that folder.
+
 Record ordering uses JavaScript UTF-16 code-unit order, independent of locale. Test-only Ajv validates the envelope with JSON Schema2020-12; core and storage retain zero runtime dependencies. IndexedDB adapter schema2 adds a separate quarantine store while preserving existing schema1 records.

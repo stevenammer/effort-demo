@@ -1,4 +1,5 @@
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
+import { checkRecord } from '../core/records.js';
 import { copySnapshot, ordered, validateCas } from './records.js';
 
 /** The injected synchronous connection belongs exclusively to this store until close(). */
@@ -62,7 +63,7 @@ export async function createSqliteStore(filename = ':memory:', { database } = {}
   const read = (table) => db.prepare(`SELECT payload FROM ${table} ORDER BY rowid`).all().map((row) => JSON.parse(row.payload));
   const snapshot = () => ({ captures: read('effort_captures'), derived: read('effort_derived'), quarantine: read('effort_quarantine') });
   function payload(record) {
-    if (!record || typeof record.id !== 'string' || !record.id) throw Error('Record ID must be a non-empty string.');
+    checkRecord(record);
     return canonical(record);
   }
   function append(record) {

@@ -1,4 +1,5 @@
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
+import { checkRecord } from '../core/records.js';
 import { copySnapshot, ordered, validateCas } from './records.js';
 function request(request) {
   return new Promise((resolve, reject) => {
@@ -36,13 +37,13 @@ export function createIndexedDbStore({ factory = globalThis.indexedDB, name = 'e
   }
   return {
     async append(record) {
-      record = structuredClone(record);
+      record = structuredClone(checkRecord(record));
       return run('captures', 'readwrite', (tx) => request(tx.objectStore('captures').add(record)));
     },
     get: async (id) => (await run('captures', 'readonly', (tx) => request(tx.objectStore('captures').get(id)))) ?? null,
     list: async () => ordered(await run('captures', 'readonly', (tx) => request(tx.objectStore('captures').getAll()))),
     async putDerived(record) {
-      record = structuredClone(record);
+      record = structuredClone(checkRecord(record));
       return run('derived', 'readwrite', (tx) => request(tx.objectStore('derived').put(record)));
     },
     async compareAndSwapDerived(id, expected, replacement) {

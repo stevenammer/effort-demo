@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname, uptime } from 'node:os';
 import { dirname } from 'node:path';
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
+import { checkRecord } from '../core/records.js';
 import { copySnapshot, ordered, validateCas } from './records.js';
 
 const WAIT_MS = 25;
@@ -250,7 +251,7 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
   }
 
   async function write(kind, value) {
-    value = structuredClone(value);
+    value = structuredClone(checkRecord(value));
     return locked(async () => {
       if (kind === 'capture' && (await rows(file)).some((row) => row.kind === kind && row.value.id === value.id)) {
         throw Error('Capture ID collision.');

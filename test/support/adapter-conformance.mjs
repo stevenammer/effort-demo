@@ -130,3 +130,47 @@ export function adapterConformance(name, make) {
     assert.deepEqual((await destination.get('direct-import')).metadata.nested.tags, ['原文', '🌿']);
   });
 }
+
+/** Records no adapter may accept: they either cannot be found again or cannot survive a save and reload. */
+const badRecords = () => [
+  ['no id', { text: 'x', createdAt: '2026-01-01T00:00:00.000Z' }],
+  ['empty id', { id: '', text: 'x' }],
+  ['number id', { id: 7, text: 'x' }],
+  ['NaN', { id: 'bad-nan', n: NaN }],
+  ['Infinity', { id: 'bad-inf', n: Infinity }],
+  ['undefined field', { id: 'bad-undefined', x: undefined }],
+  ['Date object', { id: 'bad-date', when: new Date(0) }],
+  ['nested Date', { id: 'bad-nested', metadata: { list: [{ when: new Date(0) }] } }],
+];
+
+export function refusalConformance(name, make) {
+  test(`${name}: bad records are refused everywhere and nothing is written`, async (t) => {
+    const store = await make(t);
+    await store.append(await capture('keep'));
+    await store.putDerived({ id: 'keep-view', value: 1 });
+    const before = await store.snapshot();
+    for (const [label, bad] of badRecords()) {
+      await assert.rejects(store.append(bad), undefined, `append: ${label}`);
+      await assert.rejects(store.putDerived(bad), undefined, `putDerived: ${label}`);
+      const kept = { id: 'keep-view', value: 1 }, next = { id: 'keep-view', value: 2 };
+      await assert.rejects(store.compareAndSwapDerived('keep-view', kept, bad), undefined, `cas replacement: ${label}`);
+      await assert.rejects(store.compareAndSwapDerived('keep-view', bad, next), undefined, `cas expected: ${label}`);
+      await assert.rejects(store.importSnapshot({ captures: [bad], derived: [], quarantine: [] }), undefined, `import capture: ${label}`);
+      await assert.rejects(store.importSnapshot({ captures: [], derived: [bad], quarantine: [] }), undefined, `import derived: ${label}`);
+      assert.deepEqual(await store.snapshot(), before, `store changed after refusing: ${label}`);
+    }
+  });
+  test(`${name}: a refused import writes none of its good records and the store stays usable`, async (t) => {
+    const store = await make(t);
+    const before = await store.snapshot();
+    const badOne = { id: 'bad-date', when: new Date(0) };
+    const incoming = { captures: [await capture('good-one'), badOne], derived: [{ id: 'good-view' }], quarantine: [] };
+    await assert.rejects(store.importSnapshot(incoming));
+    assert.deepEqual(await store.snapshot(), before);
+    await assert.rejects(store.importSnapshot({ captures: [], derived: [], quarantine: [{ kind: 'capture', raw: new Date(0) }] }));
+    assert.deepEqual(await store.snapshot(), before);
+    await store.append(await capture('after'));
+    assert.equal((await store.exportBundle(hash)).length > 0, true);
+    assert.deepEqual((await store.list()).map((record) => record.id), ['after']);
+  });
+}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { hostname, tmpdir, uptime } from 'node:os';
 import { join } from 'node:path';
@@ -304,7 +304,9 @@ test('bad hashes and unsafe proto keys are quarantined while constructor data ex
     await store.append({ id: 'bad-hash', text: 'changed', hash: await hash('original'), createdAt: '2026-01-01T00:00:00.000Z' });
     const unsafe = '{"id":"bad-proto","text":"x","hash":"' + '0'.repeat(64) +
       '","createdAt":"2026-01-01T00:00:00.000Z","__proto__":true}';
-    await store.append(JSON.parse(unsafe));
+    await assert.rejects(store.append(JSON.parse(unsafe)), /cannot be saved exactly/);
+    // The store now refuses such a record, so put it on disk the way damage would: as a raw line in the file.
+    await appendFile(join(directory, 'captures.jsonl'), `{"kind":"capture","value":${unsafe}}\n`);
     const bundle = await store.exportBundle(hash);
     const verified = await verifyExport(bundle, hash);
     assert.equal(verified.captures.length, 1);
