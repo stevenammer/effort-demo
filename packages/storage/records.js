@@ -4,6 +4,12 @@ export function ordered(records) {
   return records.sort((left, right) => compare(left.createdAt, right.createdAt) || compare(left.id, right.id));
 }
 
+export function validateCas(id, expected, replacement) {
+  if (typeof id !== 'string' || !id || !replacement || replacement.id !== id ||
+      (expected !== null && (!expected || expected.id !== id))) throw Error('Invalid derived compare-and-swap records.');
+  return [expected === null ? null : structuredClone(expected), structuredClone(replacement)];
+}
+
 /** A direct import must not create two originals or two versions of a view. */
 export function copySnapshot(incoming) {
   const copy = structuredClone(incoming);

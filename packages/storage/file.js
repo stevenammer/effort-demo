@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname, uptime } from 'node:os';
 import { dirname } from 'node:path';
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
-import { copySnapshot, ordered } from './records.js';
+import { copySnapshot, ordered, validateCas } from './records.js';
 
 const WAIT_MS = 25;
 const READ_ATTEMPTS = 8;
@@ -186,6 +186,22 @@ export async function recoverFileLock(file, { force = false } = {}) {
   return recoverLock(file, force);
 }
 
+// The caller holds the process lock. Stage the full append so a failed write
+// cannot leave a partial continuity row blocking every subsequent capture.
+async function appendAtomically(file, additions) {
+  const original = await readFile(file, 'utf8').catch(error => error.code === 'ENOENT' ? '' : Promise.reject(error));
+  const mode = await stat(file).then(item => item.mode & 0o7777, error => error.code === 'ENOENT' ? 0o600 : Promise.reject(error));
+  const temp = `${file}.${randomUUID()}.tmp`;
+  try {
+    const suffix = additions.map(row => JSON.stringify(row)).join('\n');
+    await writeFile(temp, `${original}${original && !original.endsWith('\n') ? '\n' : ''}${suffix}\n`, { flag: 'wx', mode });
+    await chmod(temp, mode);
+    const handle = await open(temp, 'r');
+    try { await handle.sync(); } finally { await handle.close(); }
+    await rename(temp, file);
+  } finally { await rm(temp, { force: true }); }
+}
+
 export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recoveryHooks = {} } = {}) {
   if (!Number.isFinite(lockWaitMs) || lockWaitMs < 0) throw Error('lockWaitMs must be a non-negative finite number.');
   async function locked(work) {
@@ -254,6 +270,15 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
       return ordered((await rows(file)).filter((row) => row.kind === 'capture').map((row) => row.value));
     },
     putDerived: (record) => write('derived', record),
+    async compareAndSwapDerived(id, expected, replacement) {
+      [expected, replacement] = validateCas(id, expected, replacement);
+      return locked(async () => {
+        const current = snapshotRows(await rows(file)).derived.find((record) => record?.id === id) ?? null;
+        if (canonical(current) !== canonical(expected)) return false;
+        await appendAtomically(file, [{ kind: 'derived', value: replacement }]);
+        return true;
+      });
+    },
     async export() { return JSON.stringify(await rows(file)); },
     exportBundle(hash) { return createExport(this, hash); },
     verifyBundle(input, hash) { return verifyExport(input, hash); },
@@ -284,17 +309,7 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
         additions.push({ kind: 'quarantine', value: record });
       }
       if (!additions.length) return { keptExisting };
-      const original = await readFile(file, 'utf8').catch((error) => error.code === 'ENOENT' ? '' : Promise.reject(error));
-      const mode = await stat(file).then((item) => item.mode & 0o7777, (error) => error.code === 'ENOENT' ? 0o600 : Promise.reject(error));
-      const temp = `${file}.${randomUUID()}.tmp`;
-      try {
-        const suffix = additions.map((row) => JSON.stringify(row)).join('\n');
-        await writeFile(temp, `${original}${original && !original.endsWith('\n') ? '\n' : ''}${suffix}\n`, { flag: 'wx', mode });
-        await chmod(temp, mode);
-        const handle = await open(temp, 'r');
-        try { await handle.sync(); } finally { await handle.close(); }
-        await rename(temp, file);
-      } finally { await rm(temp, { force: true }); }
+      await appendAtomically(file, additions);
       return { keptExisting };
       });
     },

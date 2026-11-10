@@ -5,6 +5,7 @@ import { link, lstat, open, realpath, rename, rm, stat } from 'node:fs/promises'
 import { MAX_EXPORT_BYTES } from '../../packages/core/export.js';
 import { createCapture, verifySaved } from '../../packages/core/capture.js';
 import { chooseNow } from '../../packages/core/now.js';
+import { createContinuity } from '../../packages/core/continuity.js';
 import { createFileStore, recoverFileLock } from '../../packages/storage/file.js';
 
 const hash = async (text) => createHash('sha256').update(text).digest('hex');
@@ -109,10 +110,41 @@ export async function runCli(args, { home, output = console.log } = {}) {
     for (const record of await store.list()) output(`${record.id}\t${record.text}`);
     return;
   }
+  const continuity = createContinuity({ store, hash, now: () => new Date().toISOString(), id: randomUUID });
+  const authority = () => ({ authority: 'human', commandId: randomUUID() });
   if (command === 'now') {
-    const selection = chooseNow(await store.list());
-    output(selection.item ? `${selection.item.quote}\n${selection.reason}` : 'Nothing is ready now.');
+    if (words.length) throw Error('Usage: effort now');
+    const state = await continuity.snapshot();
+    const active = state.commitments.find(c => c.state === 'ACTIVE');
+    output(active ? `${active.id}\t${active.source.quote}` : 'No active commitment.');
     return;
+  }
+  if (command === 'suggest') {
+    if (words.length) throw Error('Usage: effort suggest');
+    const selection = chooseNow(await store.list());
+    output(selection.item ? `SUGGESTION (not a commitment)\n${selection.item.quote}\n${selection.reason}` : 'No suggestion.');
+    return;
+  }
+  if (command === 'commitments') {
+    if (words.length) throw Error('Usage: effort commitments');
+    for (const c of (await continuity.snapshot()).commitments) output(`${c.id}\t${c.state}\t${c.source.quote}`);
+    return;
+  }
+  if (command === 'promote') {
+    if (words.length !== 3 || !/^\d+$/.test(words[1]) || !/^\d+$/.test(words[2])) throw Error('Usage: effort promote <captureId> <start> <end>');
+    output(`COMMITTED ${await continuity.promote(words[0], Number(words[1]), Number(words[2]), authority())}`); return;
+  }
+  if (command === 'activate' || command === 'resume') {
+    if (words.length !== 1) throw Error(`Usage: effort ${command} <id>`);
+    output(`${command.toUpperCase()} ${await continuity[command](words[0], authority())}`); return;
+  }
+  if (command === 'complete' || command === 'drop') {
+    if (words.length < 2) throw Error(`Usage: effort ${command} <id> <${command === 'complete' ? 'note' : 'reason'}>`);
+    output(`${command === 'complete' ? 'COMPLETE (self-reported)' : 'DROPPED'} ${await continuity[command](words[0], words.slice(1).join(' '), authority())}`); return;
+  }
+  if (command === 'hold') {
+    if (!words.length) throw Error('Usage: effort hold <summary>');
+    output(`HELD ${await continuity.hold({ summary: words.join(' ') }, authority())}`); return;
   }
   if (command === 'verify') {
     const records = await store.list();
@@ -152,6 +184,6 @@ export async function runCli(args, { home, output = console.log } = {}) {
       `${restored.quarantine.length} quarantined, ${restored.keptExisting.length} kept existing`);
     return;
   }
-  throw Error('Usage: effort capture "text" | list | now | verify | export [--overwrite] <path> | ' +
+  throw Error('Usage: effort capture "text" | list | suggest | now | promote <captureId> <start> <end> | commitments | activate <id> | complete <id> <note> | drop <id> <reason> | hold <summary> | resume <packetId> | verify | export [--overwrite] <path> | ' +
     'verify-export <path> | restore <path> | recover-lock [--force]');
 }

@@ -9,6 +9,10 @@
     "./now": "./now.js",
     "./readable": "./readable.js",
     "./semantic": "./semantic.js",
-    "./export": "./export.js"
+    "./export": "./export.js",
+    "./continuity": "./continuity.js",
+    "./states": "./states.js",
+    "./interrupt": "./interrupt.js",
+    "./night": "./night.js"
   }
 }

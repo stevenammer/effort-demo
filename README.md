@@ -17,7 +17,7 @@ E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts) is my personal 
 The shared logic is also available inside this repository:
 
 - [`packages/core`](packages/core): exact capture and readback verification, organization,
-  safe reading and NOW selection, with no runtime dependencies.
+  safe reading, explicit commitments, protected NOW and hold/resume, with no runtime dependencies.
 - [`packages/storage`](packages/storage): append-only JSONL-file, IndexedDB and SQLite adapters with a shared conformance suite.
 - [`apps/cli`](apps/cli): capture, list, NOW, verification and portable export/restore from the command line.
 

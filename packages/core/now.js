@@ -1,3 +1,4 @@
+/** Legacy recommendation ranking only; it never selects or creates an active commitment. */
 import { organizeText } from './ef.js';
 
 function stateFor(commitments, key) {

@@ -49,3 +49,10 @@ Default filenames must be non-empty path strings (or `:memory:`). New on-disk da
 MIT licensed.
 
 See [the portable format](../../docs/EFFORT_EXPORT.md) for the schema, limits and restore contract. Restore adds missing records, refuses conflicting original captures, and preserves existing derived views with an explicit report. Quarantine is retained separately and never becomes actionable content.
+
+`compareAndSwapDerived(id, expectedRecordOrNull, replacementRecord)` atomically
+compares the canonical current derived record with the expected value and writes
+the replacement only on a match. It returns a boolean; both records must carry
+the requested ID. The file adapter compares under its process lock, IndexedDB in
+a readwrite transaction, and SQLite inside `BEGIN IMMEDIATE`. Callers should
+read back and verify their own writes, and retain an idempotency key for retries.

@@ -6,6 +6,16 @@ The public demo is live at https://stevenammer.github.io/effort-demo/.
 
 The release history below is a dev log; check the repository for the current tip. The thread-review continuation and S1/S2 open core are published on main. The browser demo and its whole-workspace backups remain separate from the portable core export. Inspect actual Git state before resuming.
 
+## Shared continuity and CLI, S4
+
+The shared core now supports explicit source-quote promotion, one deliberately activated NOW, completion notes labeled as self-reports, retained drop reasons and exact hold/resume packets. Every commitment source is reverified, including inactive and terminal history. Capturing and ranking suggestions never promote work or replace the active commitment. Completing the active item leaves NOW empty until another deliberate selection.
+
+The CLI's former inferred `now` ranking is now `suggest`; `now` shows only an explicitly activated commitment. Existing captures are retained. Use `promote <captureId> <start> <end>`, then `activate <commitmentId>`. See [CLI usage](../apps/cli/README.md) and [core continuity](../packages/core/README.md#continuity).
+
+All three adapters expose atomic derived-record compare-and-swap. File continuity writes are staged and synced before replacement, preserving prior captures if a write fails partway. State checksums detect corruption; the human-authority argument states caller intent and does not authenticate identity. Command IDs make uncertain-write retries idempotent. Consumed return points refuse new resume commands.
+
+Deterministic interruption budgets protect chosen work, respect dismissals and quiet hours, and suppress duplicate keys. Advisory night friction always leaves capture, journaling and tomorrow's first step available. Seeded lifecycle and policy tests cover these rules. The browser demo and phone app keep their existing implementation in this slice.
+
 ## Shared storage adapters, S3
 
 The shared core now has file, IndexedDB and SQLite adapters, with a reusable conformance suite and transfers between every adapter pair. SQLite stores captures, derived views and quarantine in separate tables and restores them in one transaction. New databases use private file permissions. The default SQLite driver requires Node 22 with `node:sqlite`; Node 20 keeps file/IndexedDB support and can inject a compatible synchronous SQLite connection. See [storage support and ownership](../packages/storage/README.md).

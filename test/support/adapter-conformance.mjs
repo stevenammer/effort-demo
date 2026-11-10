@@ -10,6 +10,27 @@ export const derived = (value = 'source') => ({ id: 'view-a', captureId: 'captur
 
 /** Register the same public storage behavior for any async fixture factory. */
 export function adapterConformance(name, make) {
+  test(`${name}: derived compare-and-swap is canonical, atomic and isolates call-time inputs`, async (t) => {
+    const store = await make(t);
+    await store.putDerived({ id: 'unrelated', value: 'keep' });
+    const first = { id: 'cas-view', value: 1 };
+    assert.equal(await store.compareAndSwapDerived(first.id, null, first), true);
+    const second = { id: first.id, value: 2 };
+    assert.equal(await store.compareAndSwapDerived(first.id, { value: 1, id: first.id }, second), true);
+    const results = await Promise.all([3,4].map(value => store.compareAndSwapDerived(first.id, second, { id: first.id, value })));
+    assert.equal(results.filter(Boolean).length, 1);
+    const current = (await store.snapshot()).derived.find(record => record.id === first.id);
+    assert.equal(await store.compareAndSwapDerived(first.id, second, first), false);
+    assert.deepEqual((await store.snapshot()).derived.find(record => record.id === first.id), current);
+    const expected = structuredClone(current), next = { id: first.id, value: { exact: 'original' } };
+    const pending = store.compareAndSwapDerived(first.id, expected, next);
+    expected.value = 'changed'; next.value.exact = 'changed';
+    assert.equal(await pending, true);
+    assert.deepEqual((await store.snapshot()).derived.find(record => record.id === first.id).value, { exact: 'original' });
+    await assert.rejects(store.compareAndSwapDerived(first.id, null, { id: 'wrong' }));
+    assert.deepEqual((await store.snapshot()).derived.find(record => record.id === 'unrelated'), { id: 'unrelated', value: 'keep' });
+  });
+
   test(`${name}: duplicate capture and derived IDs reject a direct import atomically`, async (t) => {
     const store = await make(t);
     await store.append(await capture('existing'));

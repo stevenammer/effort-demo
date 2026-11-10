@@ -68,7 +68,7 @@ test('verifySaved rejects a tampered stored record', async () => {
   }
 });
 
-test('CLI captures, lists, chooses NOW, and refuses tampering', async () => {
+test('CLI captures, lists, suggests without choosing NOW, and refuses tampering', async () => {
   const home = await mkdtemp(join(tmpdir(), 'effort-cli-'));
   const cli = join(process.cwd(), 'apps/cli/effort.mjs');
   const { NODE_TEST_CONTEXT, ...childEnv } = process.env;
@@ -87,10 +87,13 @@ test('CLI captures, lists, chooses NOW, and refuses tampering', async () => {
     if (listed.error?.code === 'EPERM') await localRun('list');
     else assert.equal(listed.status, 0, listed.stderr);
     assert.match(listed.error?.code === 'EPERM' ? localOutput.pop() : listed.stdout, /fictional library/);
-    const selected = run('now');
-    if (selected.error?.code === 'EPERM') await localRun('now');
+    const selected = run('suggest');
+    if (selected.error?.code === 'EPERM') await localRun('suggest');
     else assert.equal(selected.status, 0, selected.stderr);
     assert.match(selected.error?.code === 'EPERM' ? localOutput.pop() : selected.stdout, /call the fictional library/);
+    const nowOnly = run('now');
+    if (nowOnly.error?.code === 'EPERM') { await localRun('now'); assert.match(localOutput.pop(), /No active commitment/); }
+    else { assert.equal(nowOnly.status, 0, nowOnly.stderr); assert.match(nowOnly.stdout, /No active commitment/); }
     const verified = run('verify');
     if (verified.error?.code === 'EPERM') await localRun('verify');
     else assert.equal(verified.status, 0);

@@ -1,5 +1,5 @@
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
-import { copySnapshot, ordered } from './records.js';
+import { copySnapshot, ordered, validateCas } from './records.js';
 
 /** The injected synchronous connection belongs exclusively to this store until close(). */
 export async function createSqliteStore(filename = ':memory:', { database } = {}) {
@@ -87,6 +87,16 @@ export async function createSqliteStore(filename = ':memory:', { database } = {}
       return transaction('derived write', true, () => {
         db.prepare('INSERT INTO effort_derived (id, payload) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload').run(canonical(record.id), text);
         return JSON.parse(text);
+      });
+    },
+    async compareAndSwapDerived(id, expected, replacement) {
+      [expected, replacement] = validateCas(id, expected, replacement);
+      return transaction('derived compare-and-swap', true, () => {
+        const row = db.prepare('SELECT payload FROM effort_derived WHERE id = ?').get(canonical(id));
+        const current = row ? JSON.parse(row.payload) : null;
+        if (canonical(current) !== canonical(expected)) return false;
+        db.prepare('INSERT INTO effort_derived (id, payload) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload').run(canonical(id), payload(replacement));
+        return true;
       });
     },
     async snapshot() { return transaction('snapshot', false, snapshot); },
