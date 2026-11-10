@@ -18,7 +18,7 @@ Where captures live. The three adapters speak the same small interface, so the c
 - **`indexeddb.js`** (`createIndexedDbStore()`): the browser version. It's tested against `fake-indexeddb`, so it runs in Node tests too.
 - **`sqlite.js`** (`await createSqliteStore(filename)`): persistent SQLite for Node. `filename` defaults to `:memory:`. Exported as `@effort/storage/sqlite`.
 
-The reusable [adapter conformance suite](../../test/support/adapter-conformance.mjs) runs the same capture, mutation-isolation, duplicate, ordering, derived-view, restore, rollback and quarantine checks against every adapter. The [registration tests](../../test/storage-conformance.test.mjs) include transfers between all adapter pairs. The original S1 fixture also checks matching organization and NOW behavior for file and IndexedDB.
+The suite also runs a fixed script of spans, replies, branches and moves against every adapter and requires the same resulting state. The reusable [adapter conformance suite](../../test/support/adapter-conformance.mjs) runs the same capture, mutation-isolation, duplicate, ordering, derived-view, restore, rollback and quarantine checks against every adapter. The [registration tests](../../test/storage-conformance.test.mjs) include transfers between all adapter pairs. The original S1 fixture also checks matching organization and NOW behavior for file and IndexedDB.
 
 ## SQLite support and ownership
 

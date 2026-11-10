@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url).pathname;
-const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs'];
+const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs'];
 const mutants = [
   ['skip readback hash comparison', 'return (await hash(record.text)) === record.hash;', 'return true;'],
   ['accept a tampered record', 'return (await hash(record.text)) === record.hash;', 'return record.id === id;'],
@@ -38,6 +38,21 @@ const mutants = [
     'if (false) return { recovered: false, reason: \'owner-changed\' };'],
   ['recovery race retry', 'if (!result.recovered) await pause();', "throw Error('Lost recovery race.');"],
   ['overwrite refusal', ['if (existing && !overwrite) throw Error', 'else await link(temporary, target);'], ['if (false) throw Error', 'else await rename(temporary, target);']],
+  // S5: spans, threads, exploration and moves.
+  ['post needs an existing span', "if (!found) throw Error('Create the Attention Span before posting in it.');", "if (false) throw Error('Create the Attention Span before posting in it.');"],
+  ['reply stays in its span', "if (span !== undefined && spanKey(span) !== spanKey(spanOf(parent))) throw Error('Reply in the original Attention Span.');", ''],
+  ['reply parent is verified', "if (!await verifiedPost(parent)) throw Error('Original source changed or failed verification.');", "if (false) throw Error('Original source changed or failed verification.');"],
+  ['post readback is exact', 'if (!await verifiedPost(actual) || !same(actual, record)) {', 'if (false) {'],
+  ['thread flags changed words', 'verified: await verifiedPost(record),', 'verified: true,'],
+  ['write gate prefix', "if (!allowed(record?.id)) throw Error('This operation may only write its own records.');", "if (false) throw Error('This operation may only write its own records.');"],
+  ['write gate create only', 'return store.compareAndSwapDerived(record.id, null, record);', 'await store.putDerived(record); return true;'],
+  ['saved record checksum', 'await digest(body) !== checksum', 'false'],
+  ['sandbox cannot become a proposal', "if (branch.dial === 'UNHINGED SANDBOX') throw Error('Leave the sandbox", "if (false) throw Error('Leave the sandbox"],
+  ['dial is checked', 'if (!EXPLORATION_DIALS.includes(dial)) throw', 'if (false) throw'],
+  ['distillation type is checked', 'if (!DISTILLATION_TYPES.includes(type)) throw', 'if (false) throw'],
+  ['damaged branch holds back its children', 'if (current && damaged.has(current.id)) for (const pathId of path)', 'if (false) for (const pathId of path)'],
+  ['turned-off move cannot be used', 'if (!move || !move.enabled || move.recovery) throw', 'if (!move) throw'],
+  ['stale move edit refused', 'if ((current?.latestId ?? null) !== expectedLatestId) throw', 'if (false) throw'],
 ];
 
 function run(cwd, args) {
@@ -75,7 +90,7 @@ for (const [name, find, replace] of mutants) {
     symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'));
     const candidates = [
       'packages/core/capture.js', 'packages/core/export.js', 'packages/core/now.js', 'packages/storage/file.js',
-      'apps/cli/lib.mjs',
+      'apps/cli/lib.mjs', 'packages/core/spans.js', 'packages/core/sealed.js', 'packages/core/exploration.js', 'packages/core/moves.js',
       'scripts/check-public.mjs', 'scripts/sync-core.mjs',
     ];
     const replacements = Array.isArray(find) ? find.map((value, index) => [value, replace[index]]) : [[find, replace]];

@@ -8,7 +8,7 @@ import { indexedDB } from 'fake-indexeddb';
 import { createFileStore } from '../packages/storage/file.js';
 import { createIndexedDbStore } from '../packages/storage/indexeddb.js';
 import { createSqliteStore } from '../packages/storage/sqlite.js';
-import { adapterConformance, refusalConformance, capture, derived, hash } from './support/adapter-conformance.mjs';
+import { adapterConformance, refusalConformance, s5Conformance, capture, derived, hash } from './support/adapter-conformance.mjs';
 
 const adapters = {
   file: async (t) => {
@@ -31,7 +31,7 @@ else test('SQLite default driver reports unsupported runtime', async () => {
   await assert.rejects(createSqliteStore(), /requires Node 22.*inject a compatible synchronous database/);
 });
 
-for (const [name, make] of Object.entries(adapters)) { adapterConformance(name, make); refusalConformance(name, make); }
+for (const [name, make] of Object.entries(adapters)) { adapterConformance(name, make); refusalConformance(name, make); s5Conformance(name, make); }
 for (const [sourceName, makeSource] of Object.entries(adapters)) {
   for (const [destinationName, makeDestination] of Object.entries(adapters)) {
     if (sourceName === destinationName) continue;

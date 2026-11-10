@@ -16,6 +16,10 @@ The thinking behind E.F.F.O.R.T., as a small library with no dependencies. It's 
 | `now` | Legacy recommendation ranking with a readable reason. It does not activate work or create commitments. |
 | `continuity` | Explicit promotion, one chosen active commitment, exact source history, self-reported completion and hold/resume through atomic storage. |
 | `states` | Neutral candidate/review and commitment vocabulary. |
+| `spans` | Named Attention Spans, posts inside them and nested replies. |
+| `exploration` | Branches off a saved thought and your own typed distillations of them. |
+| `moves` | Optional, editable, versioned thinking prompts that a branch can carry. |
+| `sealed` | Small shared helpers, including the gate that keeps these modules inside their own records. |
 | `interrupt` and `night` | Deterministic attention budgets, quiet hours and advisory night friction. |
 
 ## Use it
@@ -71,3 +75,16 @@ Equal quiet start and end hours mean quiet hours are disabled. All other ranges
 include the start hour and exclude the end hour, including overnight ranges.
 
 Every persisted commitment source, including inactive and terminal history, is reverified before returning or changing continuity. A consumed return point rejects a new resume command; retries using its original command ID acknowledge the prior operation without selecting work again. Unknown version-1 state fields are refused rather than discarded.
+
+### Spans, threads, exploration and moves
+
+These four modules (`spans.js`, `exploration.js`, `moves.js`, `sealed.js`) are the shared version of what the browser demo already does. Callers inject the store, hashing, time and IDs, as with continuity.
+
+- **Attention Spans.** A span is a named place. Its ID is the name with spaces collapsed and letters lower-cased; names are 2 to 40 characters. The seven built-in names exist from the start, and a post only goes into a span that exists.
+- **Posts and replies.** A post or reply is an ordinary capture whose `metadata` carries `span` (and `parentId` for a reply). Its text is stored exactly and verified against its hash every time it is read or built on. A reply always lives in its parent's span. If words on disk no longer match their hash, the thread still shows them but marks them unverified, and nothing new is built on them.
+- **Exploration.** A branch hangs off a saved thought, or off another branch, with a dial (`TIGHT`, `NORMAL`, `WILD`, `UNHINGED SANDBOX`). A distillation hangs off a branch and has one of the demo's nine types, including `INSIGHT`, `OPEN TENSION` and `WEIRD BUT ALIVE`. `prepareProposal` copies a distillation into the source thread as a plain reply. The sandbox dial can't do that.
+- **Moves.** A move is a thinking prompt you can edit and turn off. Nine come built in. Each edit is a new revision (the old wording stays), and a branch keeps the exact wording it was started with.
+
+None of these can create, activate, complete or change a commitment, or touch NOW. Every record they write goes through one gate that only creates records under its own prefixes (`span:`, `exploration:`, `distillation:`, `move:`) and never replaces one, and tests try every operation against that rule. Spans, branches, distillations and move revisions are one derived record each, so a backup restore merges them instead of choosing one side.
+
+Damaged saved records are reported in `damaged` and held back with anything that depends on them. They are never repaired or deleted. Retrying an operation with the same `id` option returns the saved record; the same `id` with different content is refused.

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { canonical } from '../../packages/core/export.js';
+import { services } from './s5-world.mjs';
 
 export const hash = async (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 export async function capture(id = 'capture-a', text = 'Cafe\u0301 ☕\r\nKeep \0 every byte.  ', createdAt = '2026-01-02T03:04:05.000Z') {
@@ -131,6 +133,24 @@ export function adapterConformance(name, make) {
   });
 }
 
+/** One fixed script of S5 operations. Every adapter must end in exactly this state. */
+export const S5_STATE_DIGEST = '81cf4dbbef915a2cc77efcc9f44e0c65a2e593d35555a04342eb802d9640bb1f';
+export async function runS5Script(store) {
+  const api = services(store);
+  await api.spans.createSpan('Practice room');
+  const root = await api.spans.post('practice room', '  Cafe\u0301 ☕\r\nKeep \0 every byte.  ', { id: 'fixed-root' });
+  const reply = await api.spans.reply(root.id, 'First reply.', { id: 'fixed-reply' });
+  await api.spans.reply(reply.id, 'Reply to the reply.', { id: 'fixed-nested' });
+  const branch = await api.exploration.explore({ sourceId: root.id, dial: 'WILD', text: 'What if?' }, { id: 'fixed-branch' });
+  const child = await api.exploration.explore({ sourceId: root.id, parentId: branch.id, dial: 'NORMAL', text: 'Smaller.', moveId: '00000000-0000-4000-8000-000000000009' }, { id: 'fixed-child' });
+  const insight = await api.exploration.distill({ explorationId: child.id, type: 'OPEN TENSION', text: 'Maybe not.' }, { id: 'fixed-open' });
+  await api.exploration.prepareProposal({ distillationId: insight.id });
+  await api.moves.save({ name: 'Mine', prompt: 'Ask the odd question.', enabled: true }, { id: 'fixed-move' });
+  const snapshot = await store.snapshot();
+  const byId = (a, b) => a.id < b.id ? -1 : 1;
+  return canonical({ captures: snapshot.captures.slice().sort(byId), derived: snapshot.derived.slice().sort(byId) });
+}
+
 /** Records no adapter may accept: they either cannot be found again or cannot survive a save and reload. */
 const badRecords = () => [
   ['no id', { text: 'x', createdAt: '2026-01-01T00:00:00.000Z' }],
@@ -141,7 +161,37 @@ const badRecords = () => [
   ['undefined field', { id: 'bad-undefined', x: undefined }],
   ['Date object', { id: 'bad-date', when: new Date(0) }],
   ['nested Date', { id: 'bad-nested', metadata: { list: [{ when: new Date(0) }] } }],
+  ['reply with an undefined parent', { id: 'bad-reply', text: 'x', metadata: { span: 'Learning', parentId: undefined } }],
+  ['branch with NaN', { id: 'exploration:bad-branch', kind: 'exploration', dial: 'TIGHT', weight: NaN }],
+  ['move revision with a Date', { id: 'move:bad-move:1', kind: 'move', createdAt: new Date(0) }],
 ];
+
+export function s5Conformance(name, make) {
+  test(`${name}: spans, replies, branches and moves are stored and returned identically to every other adapter`, async (t) => {
+    const store = await make(t);
+    const state = await runS5Script(store);
+    assert.equal(await hash(state), S5_STATE_DIGEST);
+    const other = await make(t);
+    await other.restoreBundle(await store.exportBundle(hash), hash);
+    assert.equal(await runS5Read(other), await runS5Read(store));
+  });
+  test(`${name}: a reply whose words no longer match its hash is quarantined and never listed as a post`, async (t) => {
+    const source = await make(t), destination = await make(t);
+    const root = await capture('thread-root', 'Root.'); root.metadata = { span: 'Learning' };
+    const reply = await capture('thread-reply', 'Original reply.'); reply.metadata = { span: 'Learning', parentId: 'thread-root' };
+    await source.append(root); await source.append({ ...reply, text: 'Rewritten reply.' });
+    const bundle = await source.exportBundle(hash);
+    assert.equal((await source.verifyBundle(bundle, hash)).quarantine.length, 1);
+    await destination.restoreBundle(bundle, hash);
+    const tree = await services(destination).spans.thread('thread-root');
+    assert.deepEqual(tree.replies, []);
+    assert.equal((await destination.list()).length, 1);
+  });
+}
+async function runS5Read(store) {
+  const api = services(store);
+  return canonical({ spans: await api.spans.listSpans(), tree: await api.spans.thread('fixed-root'), exploration: await api.exploration.snapshot(), moves: await api.moves.list() });
+}
 
 export function refusalConformance(name, make) {
   test(`${name}: bad records are refused everywhere and nothing is written`, async (t) => {
