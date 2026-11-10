@@ -31,6 +31,8 @@ doesn't replace the browser demo's richer, backward-compatible workspace backup 
 isn't a native-phone backup. Later slices may extend the shared record set with a new
 format version.
 
+S5 changed nothing about the format. Posts and replies are captures whose `metadata` holds `span` and `parentId`, so they travel in `captures.jsonl` with their hashes. Attention Spans, branches, distillations and move revisions are derived records with IDs starting `span:`, `exploration:`, `distillation:` and `move:`, so they travel in `derived.jsonl`. A bundle made before this slice has none of them, still verifies and restores, and reads back with only the built-in spans. Because each item is its own derived record, restoring a backup into a store that already has other spans or branches adds the missing ones. A derived record with the same ID but different content still keeps the destination's and is reported as `keptExisting`.
+
 Use it through the CLI:
 
 ```sh

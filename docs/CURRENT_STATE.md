@@ -6,6 +6,20 @@ The public demo is live at https://stevenammer.github.io/effort-demo/.
 
 The release history below is a dev log; check the repository for the current tip. The thread-review continuation and S1/S2 open core are published on main. The browser demo and its whole-workspace backups remain separate from the portable core export. Inspect actual Git state before resuming.
 
+## Shared spans, threads, exploration and moves, S5
+
+The shared core now has named Attention Spans, posts and nested replies, exploration branches with typed distillations, and the demo's thinking moves. They are in `packages/core` (`spans`, `exploration`, `moves`, `sealed`) and sit beside continuity without touching it. Tests try every operation against commitments and NOW, including hostile names, extra fields and forged records, and none of them can change either. Post and reply text is stored exactly and checked against its hash on every read. If words on disk change, the thread shows them with a warning and nothing new is built on them.
+
+The portable format did not change. Posts are captures with `span` and `parentId` in their metadata, and spans, branches, distillations and move revisions are one derived record each. A bundle made before this slice (kept as a test fixture) still verifies and restores on all three adapters, and the new records round trip across every adapter pair. The conformance suite now runs one fixed script of S5 operations on each adapter and requires the same resulting state, and its bad-record refusals include S5-shaped records. See [the export notes](EFFORT_EXPORT.md).
+
+Parity is an executable test: one scripted sequence, including refused steps, runs through the browser demo's own modules and through the shared core, and the resulting spans, posts, branches, distillations and moves must match. The CLI gained `span create`, `span list`, `post`, `reply`, `thread`, `explore`, `distill` and `explorations`, each with a subprocess test. See [CLI usage](../apps/cli/README.md).
+
+Measured: the full suite is 426 tests with 0 skipped on Node 22.23.4. I added mutants for the new controls to `scripts/mutate-check.mjs` but haven't run `check:mutations` on this branch. I did check by hand that the new tests fail when each of those controls is broken, apart from a loop guard that hangs instead of failing, which I left out.
+
+What is not built. Branch statuses (parked, discarded, weird but alive) and evidence marking are not ported. There is no command for editing moves, turning a distillation into a proposal, or attaching a move to a branch, though the core has all three. Explorations in the core don't carry a return point, because those live in continuity. The browser demo doesn't use these modules yet and its behavior is unchanged.
+
+Known gaps. Spans can't be renamed or removed. A second restore keeps the destination's version of any record with the same ID but different content, which for a move revision means two machines that edited the same move won't merge. Reading takes a full store snapshot each time, so large stores will be slow. The checksums catch accidents and ordinary edits, not someone who can recompute them.
+
 ## Shared continuity and CLI, S4
 
 The shared core now supports explicit source-quote promotion, one deliberately activated NOW, completion notes labeled as self-reports, retained drop reasons and exact hold/resume packets. Every commitment source is reverified, including inactive and terminal history. Capturing and ranking suggestions never promote work or replace the active commitment. Completing the active item leaves NOW empty until another deliberate selection.

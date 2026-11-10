@@ -22,6 +22,13 @@ node apps/cli/effort.mjs recover-lock --force
 - `hold <summary>` saves a return point; `resume <packetId>` deliberately returns to its open commitment.
 - The core API requires caller intent `authority: 'human'`, which is not identity authentication. Reuse a command ID when retrying an uncertain write.
 - Continuity retains its history up to 10,000 commands, 2,000 commitments, 2,000 return points, and 4 MiB encoded state. It refuses further changes when a limit is reached, without removing history.
+- `span create <name>` and `span list` manage Attention Spans. Names are 2 to 40 characters and the built-in spans are always listed.
+- `post <span> <text>` saves a post in an existing span and prints its ID. `reply <postId> <text>` replies in the same span.
+- `thread <postId>` prints the whole thread, nested by indent. A post whose words no longer match its hash is shown with a warning, not hidden.
+- `explore [--dial tight|normal|wild|sandbox] [--from <branchId>] <sourceId> <text>` saves a branch off a thought, or off another branch with `--from`. The dial defaults to `normal`.
+- `distill <branchId> <type> <text>` saves your own distillation of a branch. Types are written in lowercase with dashes, such as `insight`, `open-tension` or `weird-but-alive`.
+- `explorations <sourceId>` lists a thought's branches with their distillations.
+- None of these commands creates or changes a commitment, and `now` doesn't change. Editing moves and turning a distillation into a proposal are in the core library but have no command yet.
 - `verify` re-hashes every saved capture. If anything changed on disk, it names the capture and exits with a nonzero code.
 - `export` writes a deterministic `effort-export/1` bundle. It refuses to overwrite an existing path unless `--overwrite` is supplied.
 - `verify-export` validates the complete bundle before printing a success line.

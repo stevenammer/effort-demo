@@ -7,6 +7,7 @@ import { createCapture, verifySaved } from '../../packages/core/capture.js';
 import { chooseNow } from '../../packages/core/now.js';
 import { createContinuity } from '../../packages/core/continuity.js';
 import { createFileStore, recoverFileLock } from '../../packages/storage/file.js';
+import { isThinkingCommand, runThinkingCommand } from './thinking.mjs';
 
 const hash = async (text) => createHash('sha256').update(text).digest('hex');
 
@@ -139,6 +140,7 @@ export async function runCli(args, { home, output = console.log } = {}) {
     for (const line of damagedLines(damaged, records.length)) output(line);
     return;
   }
+  if (isThinkingCommand(command)) return runThinkingCommand(command, words, { store, hash, output });
   const continuity = createContinuity({ store, hash, now: () => new Date().toISOString(), id: randomUUID });
   const authority = () => ({ authority: 'human', commandId: randomUUID() });
   if (command === 'now') {
@@ -217,6 +219,6 @@ export async function runCli(args, { home, output = console.log } = {}) {
       `${restored.quarantine.length} quarantined, ${restored.keptExisting.length} kept existing`);
     return;
   }
-  throw Error('Usage: effort capture "text" | list | suggest | now | promote <captureId> <start> <end> | commitments | activate <id> | complete <id> <note> | drop <id> <reason> | hold <summary> | resume <packetId> | verify | export [--overwrite] <path> | ' +
+  throw Error('Usage: effort capture "text" | list | suggest | now | promote <captureId> <start> <end> | commitments | activate <id> | complete <id> <note> | drop <id> <reason> | hold <summary> | resume <packetId> | span create <name> | span list | post <span> <text> | reply <postId> <text> | thread <postId> | explore [--dial d] [--from <branchId>] <sourceId> <text> | distill <branchId> <type> <text> | explorations <sourceId> | verify | export [--overwrite] <path> | ' +
     'verify-export <path> | restore <path> | recover-lock [--force]');
 }
