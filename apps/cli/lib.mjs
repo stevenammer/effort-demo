@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
+import { constants } from 'node:fs';
 import { link, lstat, open, realpath, rename, rm, stat } from 'node:fs/promises';
 import { MAX_EXPORT_BYTES } from '../../packages/core/export.js';
 import { createCapture, verifySaved } from '../../packages/core/capture.js';
@@ -33,7 +34,7 @@ async function refuseStoreAlias(target, storePath) {
   }
 }
 async function readBundle(path) {
-  const handle = await open(path, 'r');
+  const handle = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK || 0));
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw Error('Export input must be a regular file.');

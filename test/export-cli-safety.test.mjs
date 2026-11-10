@@ -63,3 +63,31 @@ test('CLI refuses malformed UTF-8 and oversized inputs before restore or success
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+
+test('CLI rejects an unwritten FIFO promptly and accepts a symlink to a regular export', { skip: process.platform === 'win32' }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'effort-cli-fifo-'));
+  try {
+    const home = join(dir, 'home'), store = join(home, 'captures.jsonl');
+    const fifo = join(dir, 'pipe'), backup = join(dir, 'backup.json'), alias = join(dir, 'backup-link');
+    assert.equal(run(home, 'capture', 'Synthetic source.').status, 0);
+    const original = await readFile(store);
+    assert.equal(run(home, 'export', backup).status, 0);
+    await symlink(backup, alias);
+    assert.equal(run(home, 'verify-export', alias).status, 0);
+    const created = spawnSync('mkfifo', [fifo], { encoding: 'utf8', timeout: 3000 });
+    assert.ifError(created.error);
+    assert.equal(created.status, 0, created.stderr);
+    const { NODE_TEST_CONTEXT, ...env } = process.env;
+    for (const command of ['verify-export', 'restore']) {
+      const result = spawnSync(process.execPath, [cli, command, fifo], {
+        env: { ...env, EFFORT_HOME: home }, encoding: 'utf8', timeout: 3000,
+      });
+      assert.ifError(result.error);
+      assert.equal(result.signal, null);
+      fails(result);
+      assert.match(result.stderr, /regular file/);
+      assert.deepEqual(await readFile(store), original);
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
