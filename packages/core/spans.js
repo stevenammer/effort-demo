@@ -1,6 +1,6 @@
 import { createCapture } from './capture.js';
 import { validIsoInstant } from './export.js';
-import { createGate, makeDigest, openRecord, sealRecord, same, safePart, textAllowed } from './sealed.js';
+import { createGate, inOrder, isMarker, makeDigest, openMarker, openRecord, sealRecord, same, safePart, textAllowed } from './sealed.js';
 
 const SPAN_PREFIX = 'span:';
 export const BUILTIN_SPANS = Object.freeze([
@@ -42,9 +42,11 @@ export function createSpans({ store, hash, now, id }) {
   const instant = () => { const at = now(); if (!validIsoInstant(at)) throw Error('Time must be a valid ISO instant.'); return at; };
 
   async function readSpans() {
-    const result = new Map(builtins().map(span => [span.id, span])), damaged = [];
+    const result = new Map(builtins().map(span => [span.id, span])), damaged = [], markers = new Map(), originals = new Map();
     for (const record of await gate.mine()) {
+      originals.set(record.id, record);
       try {
+        if (isMarker(record)) { await openMarker(record, digest); markers.set(record.id, record); continue; }
         const body = await openRecord(record, SPAN_KEYS, digest);
         const valid = body.kind === 'span' && body.id === SPAN_PREFIX + body.spanId && validSpanName(body.name) &&
           body.spanId === spanKey(body.name) && body.spanKind === builtinKind(body.name) && validIsoInstant(body.createdAt);
@@ -53,33 +55,66 @@ export function createSpans({ store, hash, now, id }) {
         if (!result.has(spanId)) result.set(spanId, { id: spanId, name, kind: spanKind, createdAt });
       } catch (error) { damaged.push({ id: record.id, reason: error.message }); }
     }
-    return { spans: [...result.values()], damaged };
+    // Built-in spans first, then the others by creation time and then ID, the same on every adapter.
+    const builtin = [...result.values()].filter(span => span.createdAt === null);
+    return { spans: [...builtin, ...inOrder([...result.values()].filter(span => span.createdAt !== null))], damaged, markers, originals };
   }
+
+  const damagedSpan = name => Object.assign(Error(
+    `The saved record for the Attention Span "${name}" is damaged. The posts already in it are still readable ` +
+    'and nothing was deleted. Set the damaged record aside (it is kept, not deleted), ' +
+    'then create the Attention Span again.'), { code: 'SPAN_DAMAGED', target: name });
+  const isDamaged = (state, name) => state.damaged.some(item => item.id === SPAN_PREFIX + spanKey(name));
 
   async function createSpan(name) {
     const clean = cleanSpanName(name);
     if (!validSpanName(clean)) throw Error('Give the Attention Span a name between 2 and 40 characters.');
-    const existing = (await readSpans()).spans.find(span => span.id === spanKey(clean));
+    const state = await readSpans(), existing = state.spans.find(span => span.id === spanKey(clean));
     if (existing) return structuredClone(existing);
+    if (isDamaged(state, clean)) throw damagedSpan(clean);
     const spanId = spanKey(clean);
     const body = { id: SPAN_PREFIX + spanId, kind: 'span', spanId, name: clean, spanKind: builtinKind(clean), createdAt: instant() };
-    await gate.create(await sealRecord(body, digest));
-    const saved = (await readSpans()).spans.find(span => span.id === body.spanId);
-    if (!saved) throw Error('The Attention Span could not be read back. Try again.');
+    const sealed = await sealRecord(body, digest), marker = state.markers.get(body.id);
+    const made = marker ? await gate.createOver(marker, sealed) : await gate.create(sealed);
+    const after = await readSpans(), saved = after.spans.find(span => span.id === body.spanId);
+    if (!saved) {
+      if (isDamaged(after, clean)) throw damagedSpan(clean);
+      throw Error(made ? 'The Attention Span was saved but could not be read back, so it is not in use yet. Your posts are unchanged.'
+        : 'This Attention Span changed in another tab. Look at the list of Attention Spans again.');
+    }
     return structuredClone(saved);
   }
 
+  /** Puts a damaged saved Attention Span record in quarantine (kept, still in exports) so the name can be created again. */
+  async function setAsideSpan(name) {
+    const clean = cleanSpanName(name);
+    if (!validSpanName(clean)) throw Error('Give the Attention Span a name between 2 and 40 characters.');
+    const state = await readSpans(), recordId = SPAN_PREFIX + spanKey(clean);
+    const hurt = state.damaged.find(item => item.id === recordId);
+    if (!hurt) throw Error(`There is no damaged saved record for the Attention Span "${clean}", so nothing was set aside.`);
+    const record = state.originals.get(recordId);
+    const marker = await sealRecord({ id: recordId, kind: 'set-aside', setAsideAt: instant() }, digest);
+    if (!record || !await gate.setAside(record, marker, `Set aside from the Attention Span "${clean}": ${hurt.reason}`)) {
+      throw Error('The saved record changed while it was being set aside. Nothing was lost. Look at the Attention Spans again.');
+    }
+    return { setAside: recordId, name: clean };
+  }
+
   async function verifiedPost(record) {
-    return !!record && typeof record.id === 'string' && typeof record.text === 'string' && validIsoInstant(record.createdAt) &&
+    const meta = record?.metadata;
+    const shapeOk = (meta?.span === undefined || typeof meta.span === 'string') &&
+      (meta?.parentId === undefined || meta.parentId === null || typeof meta.parentId === 'string');
+    return !!record && shapeOk && typeof record.id === 'string' && typeof record.text === 'string' && validIsoInstant(record.createdAt) &&
       await hash(record.text) === record.hash;
   }
   const view = async record => ({
-    id: record.id, text: record.text, createdAt: record.createdAt, span: spanOf(record), parentId: parentOf(record),
-    verified: await verifiedPost(record),
+    id: record.id, text: record.text, createdAt: record.createdAt, span: typeof spanOf(record) === 'string' ? spanOf(record) : null,
+    parentId: typeof parentOf(record) === 'string' ? parentOf(record) : null, verified: await verifiedPost(record),
   });
 
   async function save({ text, span, parentId, requestId, derivedFromId }) {
     if (!textAllowed(text)) throw Error('Add between 1 and 4,000 characters of text.');
+    if (typeof span !== 'string') throw Error('This post has no valid Attention Span, so nothing was saved.');
     const metadata = { span, ...(parentId ? { parentId } : {}), ...(derivedFromId ? { derivedFromId } : {}) };
     const record = await createCapture({ id: requestId ?? id(), text, createdAt: instant(), metadata }, hash);
     const prior = requestId ? await store.get(requestId) : null;
@@ -101,13 +136,17 @@ export function createSpans({ store, hash, now, id }) {
 
   async function post(spanName, text, { id: requestId } = {}) {
     if (requestId !== undefined && !safePart(requestId)) throw Error('The request ID is not valid.');
-    const found = (await readSpans()).spans.find(span => span.id === spanKey(spanName));
+    const state = await readSpans(), found = state.spans.find(span => span.id === spanKey(spanName));
+    if (!found && isDamaged(state, cleanSpanName(spanName))) throw damagedSpan(cleanSpanName(spanName));
     if (!found) throw Error('Create the Attention Span before posting in it.');
     return save({ text, span: found.name, parentId: null, requestId });
   }
 
   async function reply(parentId, text, { span, id: requestId, derivedFromId } = {}) {
     if (requestId !== undefined && !safePart(requestId)) throw Error('The request ID is not valid.');
+    if (derivedFromId !== undefined && (typeof derivedFromId !== 'string' || !derivedFromId)) {
+      throw Error('The source of this reply is not valid, so nothing was saved.');
+    }
     const parent = typeof parentId === 'string' ? await store.get(parentId) : null;
     if (!parent) throw Error('That post was not found.');
     if (!await verifiedPost(parent)) throw Error('Original source changed or failed verification.');
@@ -139,15 +178,23 @@ export function createSpans({ store, hash, now, id }) {
       const list = children.get(parentOf(record)) ?? [];
       list.push(record); children.set(parentOf(record), list);
     }
-    const seen = new Set();
-    const build = async record => {
+    // Iterative on purpose: a very long chain of replies must not overflow the stack.
+    const seen = new Set(), stack = [{ record: top, into: null }];
+    let root = null;
+    while (stack.length) {
+      const { record, into } = stack.pop();
+      if (seen.has(record.id)) continue;
       seen.add(record.id);
-      const replies = [];
-      for (const child of children.get(record.id) ?? []) if (!seen.has(child.id)) replies.push(await build(child));
-      return { ...await view(record), replies };
-    };
-    return build(top);
+      const node = { ...await view(record), replies: [] };
+      if (into) into.replies.push(node); else root = node;
+      const kids = children.get(record.id) ?? [];
+      for (let i = kids.length - 1; i >= 0; i--) if (!seen.has(kids[i].id)) stack.push({ record: kids[i], into: node });
+    }
+    return root;
   }
 
-  return { listSpans: async () => structuredClone(await readSpans()), createSpan, post, reply, getPost, listPosts, thread };
+  return {
+    listSpans: async () => { const { spans, damaged } = await readSpans(); return structuredClone({ spans, damaged }); },
+    createSpan, setAsideSpan, post, reply, getPost, listPosts, thread,
+  };
 }

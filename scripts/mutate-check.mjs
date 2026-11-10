@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url).pathname;
-const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs'];
+const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs', 'test/core-s5-fixes.test.mjs'];
 const mutants = [
   ['skip readback hash comparison', 'return (await hash(record.text)) === record.hash;', 'return true;'],
   ['accept a tampered record', 'return (await hash(record.text)) === record.hash;', 'return record.id === id;'],
@@ -53,6 +53,21 @@ const mutants = [
   ['damaged branch holds back its children', 'if (current && damaged.has(current.id)) for (const pathId of path)', 'if (false) for (const pathId of path)'],
   ['turned-off move cannot be used', 'if (!move || !move.enabled || move.recovery) throw', 'if (!move) throw'],
   ['stale move edit refused', 'if ((current?.latestId ?? null) !== expectedLatestId) throw', 'if (false) throw'],
+  // S5 review fixes: damaged records, order, deep threads, strict inputs.
+  ['damaged span is named, not retried', ["if (isDamaged(state, clean)) throw damagedSpan(clean);", "if (isDamaged(after, clean)) throw damagedSpan(clean);"],
+    ['if (false) throw damagedSpan(clean);', 'if (false) throw damagedSpan(clean);']],
+  ['set-aside keeps the damaged record', 'return store.setAsideDerived(damaged.id, damaged, marker, reason);',
+    'return store.compareAndSwapDerived(damaged.id, damaged, marker);'],
+  ['set-aside only for a real marker', 'if (!allowed(damaged?.id) || !isMarker(marker) || marker.id !== damaged.id) {', 'if (!allowed(damaged?.id)) {'],
+  ['damaged move is named', 'if (current?.recovery) throw damagedMove(targetId);', 'if (false) throw damagedMove(targetId);'],
+  ['move set-aside takes the unlinked tail', 'for (const r of group.slice(linked)) targets.set(', 'for (const r of group.slice(group.length)) targets.set('],
+  ['spans keep one order', 'compare(stamp(a), stamp(b)) || compare(a.id, b.id)', '0'],
+  ['spans tie-break by ID', '|| compare(a.id, b.id)', '|| 0'],
+  ['reply source ID is checked', "typeof derivedFromId !== 'string' || !derivedFromId", 'false'],
+  ['post span shape is checked', "(meta?.span === undefined || typeof meta.span === 'string')", 'true'],
+  ['unknown option words are refused', "if (words[0]?.startsWith('-')) throw Error(`Unknown option", "if (false) throw Error(`Unknown option"],
+  ['unknown exploration ID is refused', 'if (!await store.get(rest[0])) throw Error(', 'if (false) throw Error('],
+  ['empty explorations say so', "if (!branches.length && !state.damaged.length) output(", "if (false) output("],
 ];
 
 function run(cwd, args) {
@@ -90,7 +105,7 @@ for (const [name, find, replace] of mutants) {
     symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'));
     const candidates = [
       'packages/core/capture.js', 'packages/core/export.js', 'packages/core/now.js', 'packages/storage/file.js',
-      'apps/cli/lib.mjs', 'packages/core/spans.js', 'packages/core/sealed.js', 'packages/core/exploration.js', 'packages/core/moves.js',
+      'apps/cli/lib.mjs', 'apps/cli/thinking.mjs', 'packages/core/spans.js', 'packages/core/sealed.js', 'packages/core/exploration.js', 'packages/core/moves.js',
       'scripts/check-public.mjs', 'scripts/sync-core.mjs',
     ];
     const replacements = Array.isArray(find) ? find.map((value, index) => [value, replace[index]]) : [[find, replace]];

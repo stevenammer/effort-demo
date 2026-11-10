@@ -1,4 +1,4 @@
-import { canonical } from './export.js';
+import { canonical, validIsoInstant } from './export.js';
 
 /** Shared helpers for the S5 modules. Nothing here can reach commitments or NOW. */
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
@@ -31,9 +31,25 @@ export async function openRecord(record, keys, digest) {
   return body;
 }
 
+export const MARKER_KEYS = ['id', 'kind', 'setAsideAt'];
+/** A marker takes the place of a damaged record that was set aside. The damaged record itself is kept in quarantine. */
+export const isMarker = record => record?.kind === 'set-aside';
+export async function openMarker(record, digest) {
+  const body = await openRecord(record, [...MARKER_KEYS], digest);
+  if (body.kind !== 'set-aside' || typeof body.id !== 'string' || !validIsoInstant(body.setAsideAt)) {
+    throw Error('A saved marker is not valid.');
+  }
+  return body;
+}
+const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+const stamp = record => [record?.createdAt, record?.setAsideAt].find(value => typeof value === 'string') ?? '';
+/** One defined order on every adapter: creation time, then id (UTF-16 order). */
+export const inOrder = records => [...records].sort((a, b) => compare(stamp(a), stamp(b)) || compare(a.id, b.id));
+
 /**
  * The only way S5 modules write derived records. A module may create records
- * under its own prefixes and nowhere else, and it can never overwrite one.
+ * under its own prefixes and nowhere else. Recovery retains the old record in
+ * quarantine before replacing it with a marker. Only markers can be reused.
  */
 export function createGate(store, prefixes) {
   if (!store?.snapshot || !store?.compareAndSwapDerived || !store?.get) {
@@ -46,6 +62,19 @@ export function createGate(store, prefixes) {
       if (!allowed(record?.id)) throw Error('This operation may only write its own records.');
       return store.compareAndSwapDerived(record.id, null, record);
     },
-    async mine() { return (await store.snapshot()).derived.filter(record => allowed(record?.id)); },
+    /** Replaces a marker with a new record under the same ID. Nothing else can be replaced. */
+    async createOver(marker, record) {
+      if (!allowed(record?.id) || !isMarker(marker)) throw Error('This operation may only write its own records.');
+      return store.compareAndSwapDerived(record.id, marker, record);
+    },
+    /** Moves a damaged record to quarantine (kept, not deleted) and leaves a marker in its place. */
+    async setAside(damaged, marker, reason) {
+      if (!allowed(damaged?.id) || !isMarker(marker) || marker.id !== damaged.id) {
+        throw Error('This operation may only write its own records.');
+      }
+      if (typeof store.setAsideDerived !== 'function') throw Error('This storage cannot set a damaged record aside.');
+      return store.setAsideDerived(damaged.id, damaged, marker, reason);
+    },
+    async mine() { return inOrder((await store.snapshot()).derived.filter(record => allowed(record?.id))); },
   };
 }

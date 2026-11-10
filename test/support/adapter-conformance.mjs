@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { canonical } from '../../packages/core/export.js';
 import { services } from './s5-world.mjs';
+import { createSpans } from '../../packages/core/spans.js';
+import { createMoves, MOVE_SEEDS } from '../../packages/core/moves.js';
 
 export const hash = async (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 export async function capture(id = 'capture-a', text = 'Cafe\u0301 ☕\r\nKeep \0 every byte.  ', createdAt = '2026-01-02T03:04:05.000Z') {
@@ -186,6 +188,116 @@ export function s5Conformance(name, make) {
     const tree = await services(destination).spans.thread('thread-root');
     assert.deepEqual(tree.replies, []);
     assert.equal((await destination.list()).length, 1);
+  });
+}
+/** Order and repair behaviour of the S5 records, which every adapter must share. */
+export function s5RepairConformance(name, make) {
+  const at = iso => ({ now: () => iso, id: (() => { let n = 0; return () => `r-${++n}`; })(), hash });
+  test(`${name}: Attention Spans and thinking moves come back in one defined order (creation time, then ID)`, async (t) => {
+    const store = await make(t);
+    const noon = createSpans({ store, ...at('2026-01-01T12:00:00.000Z') }), early = createSpans({ store, ...at('2026-01-01T08:00:00.000Z') });
+    for (const spanName of ['Zeta', 'Alpha', 'Mid']) await noon.createSpan(spanName);
+    await early.createSpan('Zz early');
+    const names = (await noon.listSpans()).spans.map(span => span.name);
+    assert.deepEqual(names, ['Unsorted', 'Product demo', 'Learning', 'Proof', 'People', 'Moves', 'Workspace', 'Zz early', 'Alpha', 'Mid', 'Zeta']);
+    const moves = createMoves({ store, ...at('2026-01-01T12:00:00.000Z') });
+    for (const id of ['zz', 'mm', 'aa']) await moves.save({ name: id, prompt: 'p', enabled: true }, { id });
+    assert.deepEqual((await moves.list()).slice(-3).map(move => move.id), ['aa', 'mm', 'zz']);
+  });
+  test(`${name}: a damaged Attention Span is explained, kept, and can be set aside so the name can be created again`, async (t) => {
+    const store = await make(t), api = services(store);
+    await api.spans.createSpan('Broken');
+    const post = await api.spans.post('Broken', 'Still readable.');
+    const saved = (await store.snapshot()).derived.find(record => record.id === 'span:broken');
+    const damaged = { ...saved, checksum: '0'.repeat(64) };
+    await store.putDerived(damaged);
+    for (const attempt of [() => api.spans.createSpan('broken'), () => api.spans.post('Broken', 'More.')]) {
+      await assert.rejects(attempt(), error => /damaged/.test(error.message) && !/try again|Create the Attention Span before/i.test(error.message));
+    }
+    assert.equal((await api.spans.listPosts('Broken')).length, 1);
+    assert.equal((await api.spans.thread(post.id)).text, 'Still readable.');
+    await assert.rejects(api.spans.setAsideSpan('Nothing here'), /no damaged saved record/);
+    assert.deepEqual(await api.spans.setAsideSpan('BROKEN'), { setAside: 'span:broken', name: 'BROKEN' });
+    const quarantine = (await store.snapshot()).quarantine;
+    assert.equal(quarantine.length, 1);
+    assert.deepEqual([quarantine[0].kind, JSON.parse(quarantine[0].raw)], ['derived', damaged]);
+    assert.equal((await api.spans.listSpans()).damaged.length, 0);
+    assert.equal((await api.spans.createSpan('Broken')).name, 'Broken');
+    assert.equal((await api.spans.post('Broken', 'Fresh.')).span, 'Broken');
+    assert.equal((await api.spans.listPosts('Broken')).length, 2);
+    await assert.rejects(api.spans.setAsideSpan('Broken'), /no damaged saved record/);
+    const bundle = await store.exportBundle(hash), verified = await store.verifyBundle(bundle, hash);
+    assert.equal(verified.quarantine.length, 1);
+    const other = await make(t); await other.restoreBundle(bundle, hash); await other.restoreBundle(bundle, hash);
+    assert.equal(await other.exportBundle(hash), bundle);
+    assert.equal((await other.snapshot()).quarantine.length, 1);
+  });
+  test(`${name}: a damaged thinking move is explained and can be set aside without losing earlier wording`, async (t) => {
+    const store = await make(t), api = services(store);
+    const first = await api.moves.save({ name: 'Mine', prompt: 'One.', enabled: true }, { id: 'mv' });
+    const second = await api.moves.save({ moveId: 'mv', name: 'Mine', prompt: 'Two.', enabled: true, expectedLatestId: first.id });
+    const third = await api.moves.save({ moveId: 'mv', name: 'Mine', prompt: 'Three.', enabled: true, expectedLatestId: second.id });
+    await store.putDerived({ ...second, checksum: '0'.repeat(64) });
+    const broken = [() => api.moves.save({ name: 'Again', prompt: 'x', enabled: true }, { id: 'mv' }),
+      () => api.moves.save({ moveId: 'mv', name: 'Mine', prompt: 'x', enabled: true, expectedLatestId: third.id }), () => api.moves.snapshot('mv')];
+    for (const attempt of broken) await assert.rejects(attempt(), error => /damaged/.test(error.message) && !/another tab|try again/i.test(error.message));
+    await assert.rejects(api.moves.setAsideMove('nope'), /no damaged saved record/);
+    assert.deepEqual((await api.moves.setAsideMove('mv')).setAside.sort(), [second.id, third.id]);
+    assert.equal((await store.snapshot()).quarantine.length, 2);
+    const mv = (await api.moves.list()).find(move => move.id === 'mv');
+    assert.deepEqual([mv.recovery, mv.prompt, mv.history.length], [false, 'One.', 1]);
+    const next = await api.moves.save({ moveId: 'mv', name: 'Mine', prompt: 'Fresh.', enabled: true, expectedLatestId: first.id });
+    assert.deepEqual([next.id, next.revision, next.previousId], [second.id, 2, first.id]);
+    assert.equal((await api.moves.list()).find(move => move.id === 'mv').prompt, 'Fresh.');
+  });
+  test(`${name}: recovery refuses a record that changed after inspection instead of setting aside its replacement`, async (t) => {
+    for (const kind of ['span', 'move']) {
+      const store = await make(t), api = services(store);
+      if (kind === 'span') await api.spans.createSpan('Race');
+      else await api.moves.save({ name: 'Race', prompt: 'Keep.', enabled: true }, { id: 'race' });
+      const healthy = (await store.snapshot()).derived[0];
+      const damaged = { ...healthy, checksum: '0'.repeat(64) };
+      await store.putDerived(damaged);
+      let changed = false;
+      const racing = { ...store, async snapshot() {
+        const inspected = await store.snapshot();
+        if (!changed) { changed = true; await store.putDerived(healthy); }
+        return inspected;
+      } };
+      const recovery = services(racing);
+      await assert.rejects(kind === 'span' ? recovery.spans.setAsideSpan('Race') : recovery.moves.setAsideMove('race'), /changed while it was being set aside/);
+      const after = await store.snapshot();
+      assert.deepEqual(after.derived, [healthy]);
+      assert.deepEqual(after.quarantine, []);
+    }
+  });
+  test(`${name}: damage to a built-in move revision blocks it until explicit recovery`, async (t) => {
+    const store = await make(t), api = services(store), seed = MOVE_SEEDS[0];
+    const first = await api.moves.save({ moveId: seed.id, name: seed.name, prompt: 'My version.', enabled: true });
+    await store.putDerived({ ...first, checksum: '0'.repeat(64) });
+    assert.equal((await api.moves.list()).find(move => move.id === seed.id).recovery, true);
+    await assert.rejects(api.moves.snapshot(seed.id), /damaged/);
+    await assert.rejects(api.moves.save({ moveId: seed.id, name: seed.name, prompt: 'Again.', enabled: true }), /damaged/);
+    await api.moves.setAsideMove(seed.id);
+    assert.equal((await api.moves.snapshot(seed.id)).prompt, seed.prompt);
+    await api.moves.save({ moveId: seed.id, name: seed.name, prompt: 'Recovered.', enabled: true });
+    assert.equal((await api.moves.snapshot(seed.id)).prompt, 'Recovered.');
+    assert.equal((await store.snapshot()).quarantine.length, 1);
+  });
+  test(`${name}: reply refuses a bad source ID, and a post whose Attention Span is not text is flagged and never built on`, async (t) => {
+    const store = await make(t), api = services(store);
+    await api.spans.createSpan('Learning');
+    const root = await api.spans.post('Learning', 'Root.');
+    for (const bad of [{ a: 1 }, '', null, 7, ['x']]) {
+      await assert.rejects(api.spans.reply(root.id, 'x', { derivedFromId: bad }), /source of this reply is not valid/);
+    }
+    assert.equal((await api.spans.reply(root.id, 'ok', { derivedFromId: 'distillation:real' })).parentId, root.id);
+    const forged = await capture('forged', 'Forged.'); forged.metadata = { span: { a: 1 } };
+    await store.append(forged);
+    const view = await api.spans.getPost('forged');
+    assert.deepEqual([view.verified, view.span], [false, null]);
+    await assert.rejects(api.spans.reply('forged', 'x'), /failed verification/);
+    assert.equal((await store.list()).filter(record => record.metadata?.parentId === 'forged').length, 0);
   });
 }
 async function runS5Read(store) {

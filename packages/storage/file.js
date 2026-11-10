@@ -4,7 +4,7 @@ import { hostname, uptime } from 'node:os';
 import { dirname } from 'node:path';
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
 import { checkRecord } from '../core/records.js';
-import { copySnapshot, ordered, validateCas } from './records.js';
+import { copySnapshot, ordered, validateCas, validateSetAside } from './records.js';
 
 const WAIT_MS = 25;
 const READ_ATTEMPTS = 8;
@@ -277,6 +277,16 @@ export function createFileStore(file, { lockWaitMs = DEFAULT_LOCK_WAIT_MS, recov
         const current = snapshotRows(await rows(file)).derived.find((record) => record?.id === id) ?? null;
         if (canonical(current) !== canonical(expected)) return false;
         await appendAtomically(file, [{ kind: 'derived', value: replacement }]);
+        return true;
+      });
+    },
+    async setAsideDerived(id, expected, replacement, reason) {
+      let row;
+      [expected, replacement, row] = validateSetAside(id, expected, replacement, reason);
+      return locked(async () => {
+        const current = snapshotRows(await rows(file)).derived.find((record) => record?.id === id) ?? null;
+        if (canonical(current) !== canonical(expected)) return false;
+        await appendAtomically(file, [{ kind: 'derived', value: replacement }, { kind: 'quarantine', value: row }]);
         return true;
       });
     },

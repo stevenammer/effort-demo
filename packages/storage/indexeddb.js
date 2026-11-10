@@ -1,6 +1,6 @@
 import { canonical, createExport, quarantineToAppend, restoreExport, verifyExport } from '../core/export.js';
 import { checkRecord } from '../core/records.js';
-import { copySnapshot, ordered, validateCas } from './records.js';
+import { copySnapshot, ordered, validateCas, validateSetAside } from './records.js';
 function request(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -53,6 +53,18 @@ export function createIndexedDbStore({ factory = globalThis.indexedDB, name = 'e
         const current = (await request(table.get(id))) ?? null;
         if (canonical(current) !== canonical(expected)) return false;
         await request(table.put(replacement));
+        return true;
+      });
+    },
+    async setAsideDerived(id, expected, replacement, reason) {
+      let row;
+      [expected, replacement, row] = validateSetAside(id, expected, replacement, reason);
+      return run(['derived', 'quarantine'], 'readwrite', async (tx) => {
+        const table = tx.objectStore('derived');
+        const current = (await request(table.get(id))) ?? null;
+        if (canonical(current) !== canonical(expected)) return false;
+        await request(table.put(replacement));
+        await request(tx.objectStore('quarantine').add(row));
         return true;
       });
     },

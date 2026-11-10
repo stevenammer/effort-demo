@@ -219,6 +219,10 @@ export async function runCli(args, { home, output = console.log } = {}) {
       `${restored.quarantine.length} quarantined, ${restored.keptExisting.length} kept existing`);
     return;
   }
-  throw Error('Usage: effort capture "text" | list | suggest | now | promote <captureId> <start> <end> | commitments | activate <id> | complete <id> <note> | drop <id> <reason> | hold <summary> | resume <packetId> | span create <name> | span list | post <span> <text> | reply <postId> <text> | thread <postId> | explore [--dial d] [--from <branchId>] <sourceId> <text> | distill <branchId> <type> <text> | explorations <sourceId> | verify | export [--overwrite] <path> | ' +
+  throw Error('Usage: effort capture "text" | list | suggest | now | promote <captureId> <start> <end> | commitments | ' +
+    'activate <id> | complete <id> <note> | drop <id> <reason> | hold <summary> | resume <packetId> | ' +
+    'span create <name> | span set-aside <name> | span list | post <span> <text> | reply <postId> <text> | thread <postId> | ' +
+    'explore [--dial d] [--from <branchId>] <sourceId> <text> | distill <branchId> <type> <text> | explorations <sourceId> | ' +
+    'verify | export [--overwrite] <path> | ' +
     'verify-export <path> | restore <path> | recover-lock [--force]');
 }

@@ -18,7 +18,7 @@ Where captures live. The three adapters speak the same small interface, so the c
 - **`indexeddb.js`** (`createIndexedDbStore()`): the browser version. It's tested against `fake-indexeddb`, so it runs in Node tests too.
 - **`sqlite.js`** (`await createSqliteStore(filename)`): persistent SQLite for Node. `filename` defaults to `:memory:`. Exported as `@effort/storage/sqlite`.
 
-The suite also runs a fixed script of spans, replies, branches and moves against every adapter and requires the same resulting state. The reusable [adapter conformance suite](../../test/support/adapter-conformance.mjs) runs the same capture, mutation-isolation, duplicate, ordering, derived-view, restore, rollback and quarantine checks against every adapter. The [registration tests](../../test/storage-conformance.test.mjs) include transfers between all adapter pairs. The original S1 fixture also checks matching organization and NOW behavior for file and IndexedDB.
+The suite also runs a fixed script of spans, replies, branches and moves against every adapter and compares the records after sorting them by ID, plus their readback. Span and move ordering are checked separately. The reusable [adapter conformance suite](../../test/support/adapter-conformance.mjs) runs the same capture, mutation-isolation, duplicate, ordering, derived-view, restore, rollback and quarantine checks against every adapter. The [registration tests](../../test/storage-conformance.test.mjs) include transfers between all adapter pairs. The original S1 fixture also checks matching organization and NOW behavior for file and IndexedDB.
 
 ## SQLite support and ownership
 
@@ -56,3 +56,5 @@ the replacement only on a match. It returns a boolean; both records must carry
 the requested ID. The file adapter compares under its process lock, IndexedDB in
 a readwrite transaction, and SQLite inside `BEGIN IMMEDIATE`. Callers should
 read back and verify their own writes, and retain an idempotency key for retries.
+
+`setAsideDerived(id, expected, marker, reason)` is the recovery primitive used by spans and thinking moves. It compares the current record with `expected`, then atomically retains that record in quarantine and puts the marker at its ID. It returns `false` without writing if the record changed. Capture records are unaffected.

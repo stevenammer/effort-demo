@@ -14,6 +14,13 @@ export function validateCas(id, expected, replacement) {
   return [expected === null ? null : structuredClone(expected), structuredClone(replacement)];
 }
 
+/** Checks a set-aside: the exact damaged record moves to quarantine and a marker takes its place, in one step. */
+export function validateSetAside(id, expected, replacement, reason) {
+  if (!expected || typeof reason !== 'string' || !reason) throw Error('Invalid derived set-aside records.');
+  const [kept, marker] = validateCas(id, expected, replacement);
+  return [kept, marker, { kind: 'derived', reason, raw: JSON.stringify(kept) }];
+}
+
 /** A direct import must not create two originals or two versions of a view. */
 export function copySnapshot(incoming) {
   checkSnapshotRecords(incoming);

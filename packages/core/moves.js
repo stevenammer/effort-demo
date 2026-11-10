@@ -1,5 +1,5 @@
 import { validIsoInstant } from './export.js';
-import { createGate, makeDigest, openRecord, sealRecord, same, safePart, textAllowed } from './sealed.js';
+import { createGate, isMarker, makeDigest, openMarker, openRecord, sealRecord, same, safePart, textAllowed } from './sealed.js';
 
 const MOVE_PREFIX = 'move:';
 const MOVE_KEYS = ['id', 'kind', 'moveId', 'revision', 'previousId', 'name', 'prompt', 'enabled', 'createdAt'];
@@ -41,9 +41,11 @@ export function createMoves({ store, hash, now, id }) {
   const gate = createGate(store, [MOVE_PREFIX]);
 
   async function read() {
-    const revisions = [], damaged = [];
+    const revisions = [], damaged = [], markers = new Map(), originals = new Map();
     for (const record of await gate.mine()) {
+      originals.set(record.id, record);
       try {
+        if (isMarker(record)) { await openMarker(record, digest); markers.set(record.id, record); continue; }
         const body = await openRecord(record, MOVE_KEYS, digest);
         if (body.kind !== 'move' || !safePart(body.moveId) || !Number.isInteger(body.revision) || body.revision < 1 ||
             body.id !== `${MOVE_PREFIX}${body.moveId}:${body.revision}` || !nameAllowed(body.name) || !promptAllowed(body.prompt) ||
@@ -51,8 +53,14 @@ export function createMoves({ store, hash, now, id }) {
         revisions.push(body);
       } catch (error) { damaged.push({ id: record.id, reason: error.message }); }
     }
-    return { revisions, damaged };
+    return { revisions, damaged, markers, originals };
   }
+
+  const idOfMove = recordId => recordId.split(':')[1];
+  const damagedMove = moveId => Object.assign(Error(
+    'This thinking move is unavailable because its saved record is damaged and needs recovery. ' +
+    'Your earlier wording is still saved and nothing was deleted. ' +
+    'Set the damaged record aside (it is kept, not deleted), then save the move again.'), { code: 'MOVE_DAMAGED', target: moveId });
 
   function derive({ revisions, damaged }) {
     const result = new Map(MOVE_SEEDS.map(seed => [seed.id, fromSeed(seed)]));
@@ -69,10 +77,11 @@ export function createMoves({ store, hash, now, id }) {
         latestId: last.id, history: group, recovery,
       });
     }
-    for (const moveId of brokenIds) if (!result.has(moveId)) {
-      result.set(moveId, {
-        id: moveId, name: 'Move definition needs recovery', prompt: '', enabled: false, latestId: null, history: [], recovery: true,
-      });
+    for (const moveId of brokenIds) {
+      const prior = result.get(moveId) ?? {
+        id: moveId, name: 'Move definition needs recovery', prompt: '', latestId: null, history: [],
+      };
+      result.set(moveId, { ...prior, enabled: false, recovery: true });
     }
     return [...result.values()];
   }
@@ -81,6 +90,7 @@ export function createMoves({ store, hash, now, id }) {
 
   async function snapshot(moveId) {
     const move = derive(await read()).find(item => item.id === moveId);
+    if (move?.recovery) throw damagedMove(moveId);
     if (!move || !move.enabled || move.recovery) throw Error('This thinking move is unavailable or turned off.');
     return { id: move.id, revisionId: move.latestId, name: move.name, prompt: move.prompt };
   }
@@ -94,9 +104,9 @@ export function createMoves({ store, hash, now, id }) {
     const targetId = moveId ?? (safePart(requestId) ? requestId : id());
     if (!safePart(targetId)) throw Error('The move ID is not valid.');
     const current = derive(state).find(item => item.id === targetId);
+    if (current?.recovery) throw damagedMove(targetId);
     if (moveId === null && current) throw Error('This move changed in another tab. Refresh before saving.');
     if (moveId !== null && !current) throw Error('That thinking move was not found.');
-    if (current?.recovery) throw Error('This move needs recovery before it can change. Your writing is still here.');
     if ((current?.latestId ?? null) !== expectedLatestId) throw Error('This move changed in another tab. Refresh before saving.');
     const revision = (current?.history.length ?? 0) + 1;
     const body = {
@@ -105,7 +115,8 @@ export function createMoves({ store, hash, now, id }) {
     };
     if (!validIsoInstant(body.createdAt)) throw Error('Time must be a valid ISO instant.');
     const record = await sealRecord(body, digest);
-    if (!await gate.create(record)) {
+    const marker = state.markers.get(body.id);
+    if (!(marker ? await gate.createOver(marker, record) : await gate.create(record))) {
       const existing = (await read()).revisions.find(r => r.id === body.id);
       const { createdAt, checksum, ...theirs } = existing ?? {}, { createdAt: ignoredAt, ...mine } = body;
       if (!existing || !same(theirs, mine)) throw Error('This move changed in another tab. Refresh before saving.');
@@ -117,5 +128,29 @@ export function createMoves({ store, hash, now, id }) {
     return structuredClone(saved);
   }
 
-  return { list, snapshot, save, revisions: async () => structuredClone((await read()).revisions) };
+  /**
+   * Puts a move's damaged records, and any later revisions that no longer link to a good history, in quarantine.
+   * Nothing is deleted, and the earlier good wording stays in use.
+   */
+  async function setAsideMove(moveId) {
+    if (!safePart(moveId)) throw Error('The move ID is not valid.');
+    const state = await read(), group = state.revisions.filter(r => r.moveId === moveId).sort((a, b) => a.revision - b.revision);
+    const targets = new Map(state.damaged.filter(d => idOfMove(d.id) === moveId).map(d => [d.id, d.reason]));
+    let linked = 0;
+    const links = (r, i) => r.revision === i + 1 && r.previousId === (i ? group[i - 1].id : null);
+    while (linked < group.length && links(group[linked], linked)) linked++;
+    for (const r of group.slice(linked)) targets.set(r.id, 'A later revision no longer links to the earlier ones.');
+    if (!targets.size) throw Error('There is no damaged saved record for this thinking move, so nothing was set aside.');
+    const mine = state.originals;
+    for (const [recordId, reason] of targets) {
+      const marker = await sealRecord({ id: recordId, kind: 'set-aside', setAsideAt: now() }, digest);
+      if (!validIsoInstant(marker.setAsideAt)) throw Error('Time must be a valid ISO instant.');
+      if (!mine.has(recordId) || !await gate.setAside(mine.get(recordId), marker, `Set aside from a thinking move: ${reason}`)) {
+        throw Error('The saved record changed while it was being set aside. Nothing was lost. Look at the move again.');
+      }
+    }
+    return { setAside: [...targets.keys()], moveId };
+  }
+
+  return { list, snapshot, save, setAsideMove, revisions: async () => structuredClone((await read()).revisions) };
 }
