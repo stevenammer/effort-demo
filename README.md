@@ -12,6 +12,19 @@ E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts) is my personal 
 - **Commitments are explicit.** Nothing becomes work by itself. You pick one next step, and finishing it leaves a self-reported receipt.
 - **AI help is bounded and leaves receipts.** Helpers are off by default. You approve exact selected text and a self-hosted route, and every answer keeps its prompt, model and lineage.
 
+## The open core (alpha)
+
+The shared logic is also available inside this repository:
+
+- [`packages/core`](packages/core): exact capture and readback verification, organization,
+  safe reading and NOW selection, with no runtime dependencies.
+- [`packages/storage`](packages/storage): append-only JSONL-file and IndexedDB adapters.
+- [`apps/cli`](apps/cli): capture, list, NOW and verification from the command line.
+
+The browser uses a generated copy of the core, checked for drift. This is an alpha library;
+its common export format and further integration slices are still being specified.
+The package READMEs show how to use the code from this repository.
+
 ## How it was built
 
 I wrote the specs and decisions, agents wrote most of the code, and I red-teamed it and chose what shipped. One small example, start to finish, is in the [case study](docs/CASE_STUDY.md). The full list of attacks and defects is [RED_TEAM.md](docs/RED_TEAM.md). The running dev log, including what is verified and what isn't, is [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).
