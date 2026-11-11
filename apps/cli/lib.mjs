@@ -7,6 +7,7 @@ import { createCapture, verifySaved } from '../../packages/core/capture.js';
 import { chooseNow } from '../../packages/core/now.js';
 import { createContinuity } from '../../packages/core/continuity.js';
 import { createFileStore, recoverFileLock } from '../../packages/storage/file.js';
+import { runHelperCommand } from './helpers.mjs';
 import { isThinkingCommand, runThinkingCommand } from './thinking.mjs';
 
 const hash = async (text) => createHash('sha256').update(text).digest('hex');
@@ -140,6 +141,7 @@ export async function runCli(args, { home, output = console.log } = {}) {
     for (const line of damagedLines(damaged, records.length)) output(line);
     return;
   }
+  if (command === 'helper') return runHelperCommand(words, { store, hash, home: directory, output });
   if (isThinkingCommand(command)) return runThinkingCommand(command, words, { store, hash, output });
   const continuity = createContinuity({ store, hash, now: () => new Date().toISOString(), id: randomUUID });
   const authority = () => ({ authority: 'human', commandId: randomUUID() });

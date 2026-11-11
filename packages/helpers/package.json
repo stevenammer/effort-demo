@@ -1,0 +1,7 @@
+{
+  "name": "@effort/helpers",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "exports": { ".": "./thread.js", "./contract": "./contract.js", "./reference": "./reference.js", "./trust": "./trust.js" }
+}
