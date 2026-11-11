@@ -554,6 +554,18 @@ footer a {
   border-color:#93635a;
   background:#93635a10
 }
+.voice-capture,.safety-note {
+  border-top:1px solid var(--line);
+  margin:1rem 0;
+  padding-top:1rem
+}
+.safety-note {
+  border:1px solid #c89f5a80;
+  background:#c89f5a12;
+  border-radius:8px;
+  padding:.8rem 1rem
+}
+.safety-note p { margin-bottom:.6rem; }
 .empty {
   padding:2rem;
   border:1px dashed var(--line);

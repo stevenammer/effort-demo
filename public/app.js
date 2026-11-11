@@ -16,6 +16,8 @@ import { spanKey, parentOf, threadRoot } from './spans.js';
 import { createDraftShelf } from './drafts.js';
 import { boundedWindow, SPAN_WINDOW, THREAD_WINDOW } from './windowed-list.js';
 import { cacheBudget, clearRegenerableCaches } from './cache-budget.js';
+import { createSafetyNote } from './safety-routing.js';
+import { recognitionConstructor, startBrowserSpeech } from './speech-capture.js';
 
 const $ = id => document.getElementById(id);
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -88,6 +90,30 @@ async function loadContext(context) {
 }
 async function clearDraft(context, body) { if (!shelf || (fenced && !adopted.has(context))) throw Error("Draft remains in this window after the workspace changed."); await shelf.clear(context, body); }
 const captureBody = () => ({ text: value('capture-text'), span: $('capture-span').value });
+const captureSafety = createSafetyNote({ element });
+$('capture-safety-note').append(captureSafety.node);
+let speechRecognition = null, speechBaseText = '';
+function setVoiceStatus(text) { $('voice-capture-status').textContent = text; }
+function stopBrowserSpeech() { if (speechRecognition) { speechRecognition.abort?.(); speechRecognition = null; } }
+function setupVoiceCapture() {
+  const button = $('voice-capture-start');
+  if (!recognitionConstructor(window)) {
+    button.disabled = true;
+    setVoiceStatus("Browser voice capture isn't available here. Nothing was recorded or sent by this app.");
+    return;
+  }
+  button.onclick = () => {
+    if (speechRecognition) { stopBrowserSpeech(); setVoiceStatus('Voice capture stopped. Review and edit the draft before saving.'); return; }
+    speechBaseText = value('capture-text');
+    try {
+      speechRecognition = startBrowserSpeech({ browser: window, onText: transcript => { setValue('capture-text', `${speechBaseText}${speechBaseText && transcript ? ' ' : ''}${transcript}`); captureSafety.update(value('capture-text')); persistDraft(true); }, onState: state => {
+        if (state === 'listening') { button.textContent = 'Stop browser voice capture'; setVoiceStatus('Listening in your browser. No audio is stored by this app.'); }
+        else if (state === 'idle') { speechRecognition = null; button.textContent = 'Use browser voice capture'; setVoiceStatus('Voice transcript added as a draft. Review and edit it before saving.'); }
+        else if (state.startsWith('error:')) { speechRecognition = null; button.textContent = 'Use browser voice capture'; setVoiceStatus(`Voice capture is unavailable (${state.slice(6)}). Nothing was saved.`); }
+      }});
+    } catch (error) { speechRecognition = null; setVoiceStatus(`Voice capture is unavailable. Nothing was saved. ${error.message}`); }
+  };
+}
 const replyBody = () => ({ text: value('reply-text'), parentId: replyTarget });
 function requestId(context, body) { const key = `${KEY}-request-${context}`; const raw = JSON.stringify(body); try { const old = JSON.parse(sessionStorage.getItem(key) || 'null'); if (old?.body === raw) return old.id; const id = crypto.randomUUID(); sessionStorage.setItem(key, JSON.stringify({body: raw, id})); return id; } catch { const old = requestIds.get(key); if (old?.body === raw) return old.id; const id = crypto.randomUUID(); requestIds.set(key, {body: raw, id}); return id; } }
 const requestIds = new Map();
@@ -899,15 +925,15 @@ $('span-form').onsubmit = async event => {
     try { await refreshed(); openSpan(result.span.id); } catch (e) { notice(`Attention Span created, but the view could not refresh: ${e.message}`, true); }
   } catch (error) { status('span-error', error.message); } finally { $('save-span').disabled = false; }
 };
-$('capture-text').oninput = () => { edited('capture-text'); persistDraft(true); renderCapturePreview(); };
+$('capture-text').oninput = () => { edited('capture-text'); captureSafety.update(value('capture-text')); persistDraft(true); renderCapturePreview(); };
 $('capture-ef').onclick = () => setEF(!efOn);
 $('capture-span').onchange = () => persistDraft(true);
-$('capture-dialog').addEventListener('close', () => { if (value('capture-text')) persistDraft(); });
+$('capture-dialog').addEventListener('close', () => { stopBrowserSpeech(); if (value('capture-text')) persistDraft(); });
 addEventListener('pagehide', () => { if (value('capture-text')) persistDraft(); });
-$('fill-example').onclick = () => { setValue('capture-text', "Maybe build a small workshop exercise.\nI'll review the outline tomorrow.\nI'm waiting for the venue to reply."); persistDraft(true); $('capture-text').focus(); };
+$('fill-example').onclick = () => { setValue('capture-text', "Maybe build a small workshop exercise.\nI'll review the outline tomorrow.\nI'm waiting for the venue to reply."); captureSafety.update(value('capture-text')); persistDraft(true); $('capture-text').focus(); };
 $('capture-form').onsubmit = async event => {
   event.preventDefault(); if (saving || !storageHealthy) return;
-  const body = captureBody(), text = body.text, span = body.span, generation = epoch;
+  const body = captureBody(), text = body.text, span = body.span, generation = epoch; captureSafety.update(text);
   saving = true; $('save-capture').disabled = true; await persistDraft(true); $('save-capture').textContent = 'Verifying…';
   try {
     await store.capture(text, span, null, { requestId: requestId('capture', body) });
@@ -959,7 +985,7 @@ async function replaceDemo(samples) {
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith(`${KEY}-request-`)) sessionStorage.removeItem(key); } catch {}
     for (const id of ['capture-text', 'reply-text', 'hold-summary', 'hold-next', 'drop-note', 'span-name', 'explore-text', 'distill-text', 'move-name', 'move-prompt', 'branch-note']) $(id).value = '';
-    renderCapturePreview();
+    captureSafety.update(value('capture-text')); renderCapturePreview();
     for (const id of ['draft-state', 'reply-draft-state', 'hold-error', 'drop-error', 'span-error', 'explore-error', 'distill-error']) status(id, '');
     document.querySelectorAll('.retry-draft-cleanup').forEach(button => button.remove());
     $('capture-span').value = 'Unsorted';
@@ -1007,6 +1033,7 @@ function recoverLegacyCapture() {
   if (workspaceEpoch !== undefined && workspaceEpoch !== null) return false;
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }
 }
+setupVoiceCapture();
 threadReviewUI = createThreadReviewUI({openThread,prepareProposal:considerHelperProposal,isPreparing:(id,hash,selection=null)=>helperPreparationPending.has(`${id}:${hash}:${JSON.stringify(selection)}`),getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,element,saveDraft,loadContext,clearDraft,refreshed,notice,downloadText,displayTitle});
 peopleUI = createPeopleUI({getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,requestId,releaseRequest,refreshed,showView,openSource,notice,downloadText,element,displayTitle,formatDate});
 revisionsUI = createRevisionsUI({prepareProposal:considerRevisionProposal,isPreparing:(id,hash)=>revisionPreparationPending.has(revisionPreparationKey(id,hash)),getState:()=>state,getStore:()=>store,getEpoch:()=>workspaceEpoch,getGeneration:()=>epoch,saveDraft,loadContext,clearDraft,refreshed,element,organized,downloadText,notice,onSaved:id=>{if(currentView==='fort')archiveUI.refresh(id);}});
@@ -1016,10 +1043,11 @@ try {
   store = createStore(); await store.seed(); await refreshed(); workspaceEpoch = (await store.health()).epoch;
   try {
     shelf = createDraftShelf(); await shelf.ready;
-    const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); $('capture-span').value = draft.body.span; }
+    const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); captureSafety.update(value('capture-text')); $('capture-span').value = draft.body.span; }
     const shared = new URL(location.href).searchParams.get('share');
     if (shared && !draft && shared.length <= LIMITS.text) {
       setValue('capture-text', shared);
+      captureSafety.update(value('capture-text'));
       history.replaceState(null, '', `${location.pathname}${location.hash || '#home'}`);
       notice('Shared text is in Capture. Review it, choose a span if useful, then save it yourself.');
     }
