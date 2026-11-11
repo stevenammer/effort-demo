@@ -10,7 +10,7 @@ async function files(dir) {
   for (const entry of await readdir(path.join(root, dir), { withFileTypes: true })) {
     const name = `${dir}/${entry.name}`;
     if (entry.isDirectory()) result.push(...await files(name));
-    else if (entry.isFile() && /\.(html|js|css|svg)$/.test(entry.name)) result.push(name);
+    else if (entry.isFile() && /\.(html|js|css|svg|webmanifest)$/.test(entry.name)) result.push(name);
   }
   return result;
 }

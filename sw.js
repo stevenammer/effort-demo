@@ -47,6 +47,16 @@ self.addEventListener('message', event => {
   else if (event.data?.type === 'SHELL_STATUS') event.waitUntil(releaseCache().then(() => event.ports?.[0]?.postMessage({ready:true, version:SHELL_VERSION})).catch(() => event.ports?.[0]?.postMessage({ready:false})));
 });
 self.addEventListener('fetch', event => {
+  // Share Target posts become a same-origin capture URL. The page owns the
+  // actual local save, so a closed or failed page cannot create a capture.
+  if (event.request.method === 'POST' && new URL(event.request.url).pathname === `${scope.pathname}public/`) {
+    event.respondWith((async () => {
+      const data = await event.request.formData();
+      const text = [data.get('title'), data.get('text'), data.get('url')].filter(value => typeof value === 'string' && value.trim()).join('\n\n');
+      return Response.redirect(new URL(`public/?share=${encodeURIComponent(text.slice(0, 4000))}`, scope), 303);
+    })());
+    return;
+  }
   const url = assetUrl(event.request); if (!url) return;
   event.respondWith((async () => {
     const response = await (await releaseCache()).match(url);

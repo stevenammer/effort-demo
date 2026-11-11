@@ -4,7 +4,7 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { request } from '../public/database.js';
 import { sha256 } from '../public/primitives.js';
 import { recoveryRecord } from '../public/records.js';
-import { createOpened, deriveOpened, validateOpenedState, sameOpenedSource } from '../public/opened.js';
+import { createOpened, deriveOpened, deriveSpanUnread, validateOpenedState, sameOpenedSource } from '../public/opened.js';
 
 async function setup() {
   const factory = new IDBFactory(), opening = factory.open('opened-test', 1);
@@ -21,6 +21,17 @@ test('concurrent exact-source marks use one portable canonical receipt and prese
   const x = await setup(), c = await x.capture('Exact post.'), data = { items: [{ id: c.id, hash: c.hash }] };
   const copies = await Promise.all(Array.from({ length: 8 }, () => x.opened.markOpened(data)));
   assert.ok(copies.every(r => sameOpenedSource(r[0], copies[0][0]))); const state = await x.state(); assert.equal(state.openedReceipts.length, 1); assert.deepEqual(state.captures, [c]); assert.ok(deriveOpened(state).opened.has(c.id)); await validateOpenedState(state); x.close();
+});
+
+test('per-span unread state is derived from portable exact opening receipts', async () => {
+  const x = await setup(), a = await x.capture('Read post.'), b = await x.capture('Unread post.');
+  await x.opened.markOpened({ items: [{ id: a.id, hash: a.hash }] });
+  const status = deriveSpanUnread(await x.state(), 'Unsorted');
+  assert.deepEqual(status, { total: 2, unread: 1, read: 1, unknown: 0 });
+  // The derived state has no write path and cannot make later capture fail.
+  const c = await x.capture('Capture remains available.');
+  assert.equal(deriveSpanUnread(await x.state(), 'Unsorted').unread, 2);
+  assert.equal(c.text, 'Capture remains available.'); x.close();
 });
 
 test('opening an older snapshot never marks a later or backdated reply', async () => {

@@ -1,5 +1,21 @@
 # E.F.F.O.R.T. continuation checkpoint, November 9, 2026
 
+## S9 working-tree audit, November 10, 2026
+
+This local continuation adds a derived unread/opened count to Attention Span
+cards. It uses the existing exact opening receipts, so it travels in browser
+backups and never blocks capture when that optional history is unavailable.
+The existing People slice remains the source-linked relationship implementation:
+people are manually named context, never inferred from text or sent anywhere.
+
+The same working tree also adds a reversible browser-local capture-only mode
+and PWA Share Target plumbing. Share Target content is only prefilled into the
+capture composer and needs an explicit save. The OS-level installed-PWA share
+flow is not yet verified. Scale/cache policy and the full item-by-item
+completion audit are still open. The full suite could not be run in this
+sandbox because several existing tests spawn child processes and receive
+`EPERM`; focused opening tests, syntax, core-drift and the public guard passed.
+
 ## Start here
 
 The public demo is live at https://stevenammer.github.io/effort-demo/.

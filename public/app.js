@@ -3,7 +3,7 @@ import { createThreadReviewUI } from './thread-review-ui.js';
 import { createRevisionsUI } from './revisions-ui.js';
 import { createArchiveUI } from './archive-ui.js';
 import { createPeopleUI } from './people-ui.js';
-import { deriveOpened } from './opened.js';
+import { deriveOpened, deriveSpanUnread } from './opened.js';
 import { deriveMoves, deriveBranchStatuses, moveSnapshot, validMoveSnapshot } from './thinking.js';
 import { artifactBytes, artifactPreview, artifactSourceStatus, ARTIFACT_LIMITS } from './artifacts.js';
 import { EXPLORATION_DIALS, DISTILLATION_TYPES, validateProposalProvenance } from './exploration.js';
@@ -26,6 +26,20 @@ const label = { action_candidate: 'Possible action', explicit_commitment: 'State
 let threadReviewUI, peopleUI, archiveUI, revisionsUI, personSelection = null;
 let efOn = true;
 try { efOn = localStorage.getItem('effort-display-ef') !== 'off'; } catch {}
+let captureOnly = false;
+try { captureOnly = localStorage.getItem('effort-capture-only') === 'on'; } catch {}
+function setCaptureOnly(on) {
+  captureOnly = !!on;
+  try { localStorage.setItem('effort-capture-only', captureOnly ? 'on' : 'off'); } catch {}
+  document.body.classList.toggle('capture-only', captureOnly);
+  $('overload-toggle').setAttribute('aria-pressed', String(captureOnly));
+  $('overload-toggle').textContent = captureOnly ? 'Return to workspace' : 'Capture-only mode';
+  $('capture-only-panel').hidden = !captureOnly;
+  if (captureOnly) {
+    $('capture-only-next').textContent = state?.now ? `Tomorrow's first step: ${readablePreview(state.now.quote, 180)}` : "Tomorrow's first step isn't chosen yet. Capture first, then decide later.";
+    showView('home', false);
+  }
+}
 function setEF(on) { efOn = !!on; try { localStorage.setItem('effort-display-ef', efOn ? 'on' : 'off'); } catch {} renderCapturePreview(); archiveUI?.modeChanged(); }
 function renderCapturePreview() {
   const host = $('capture-preview'); if (!host) return;
@@ -105,6 +119,9 @@ function showView(route, focus = true) {
 const routeFromHash = () => location.hash.slice(1) || 'home';
 const openThread = id => showView(`thread/${id}`);
 const openSpan = id => showView(`span/${encodeURIComponent(id)}`);
+$('overload-toggle').onclick = () => setCaptureOnly(!captureOnly);
+$('capture-only-exit').onclick = () => setCaptureOnly(false);
+$('capture-only-open').onclick = () => $('capture-open').click();
 function entryCard(capture) {
   const card = element('article', undefined, 'entry-card');
   card.append(element('span', `${capture.span}${capture.sample ? ' · FICTIONAL EXAMPLE' : ' · DEMO CAPTURE'}`, 'eyebrow'));
@@ -132,6 +149,7 @@ function render() {
   if ([...$('capture-span').options].some(o => o.value === selected)) $('capture-span').value = selected;
   else $('capture-span').value = 'Unsorted';
   renderSpans(); renderThread(); archiveUI?.update(); revisionsUI?.update(); threadReviewUI?.update();
+  setCaptureOnly(captureOnly);
 }
 const descriptions = {
   raw: 'A landing place for thoughts that don’t need a destination yet.',
@@ -194,7 +212,7 @@ function renderSpans() {
     card.append(element('span', s.kind === 'journal' ? 'ATTENTION SPAN' : s.kind.toUpperCase(), 'eyebrow'), element('h2'));
     card.querySelector('h2').append(link); card.append(element('p', descriptions[s.kind], 'small'));
     card.append(element('p', `${posts.length} post${posts.length === 1 ? '' : 's'} · ${all.length - posts.length} repl${all.length - posts.length === 1 ? 'y' : 'ies'}${latest ? ` · ${formatDate(latest.createdAt)}` : ' · Ready when you are'}`, 'small'));
-    if (all.length) { const summary = element('p', openingSummary(all, reading), 'small opening-summary'); summary.dataset.openingSpan = s.id; card.append(summary); }
+    if (all.length) { const spanUnread = deriveSpanUnread({ openedReceipts: state.openedReceipts ?? [], captures: state.captures, recovery: state.recovery ?? [] }, s.id); const summary = element('p', spanUnread.unknown ? `${spanUnread.unread} unread · ${spanUnread.read} opened · ${spanUnread.unknown} needs recovery` : `${spanUnread.unread} unread · ${spanUnread.read} opened`, 'small opening-summary'); summary.dataset.openingSpan = s.id; card.append(summary); }
     if (latest) card.append(element('p', displayTitle(latest.text, 110), 'span-preview'));
     return card;
   }));
@@ -983,6 +1001,12 @@ try {
   try {
     shelf = createDraftShelf(); await shelf.ready;
     const draft = await loadContext('capture'); if (draft) { setValue('capture-text', draft.body.text); $('capture-span').value = draft.body.span; }
+    const shared = new URL(location.href).searchParams.get('share');
+    if (shared && !draft && shared.length <= LIMITS.text) {
+      setValue('capture-text', shared);
+      history.replaceState(null, '', `${location.pathname}${location.hash || '#home'}`);
+      notice('Shared text is in Capture. Review it, choose a span if useful, then save it yourself.');
+    }
     else if ((await shelf.list()).records.some(record => record.body.text || record.body.name || record.body.note || record.body.summary || record.body.nextAction || record.body.prompt || record.body.status || record.body.profile?.name || record.body.when)) notice('Unfinished writing is available in Engine Room → Draft recovery.');
   } catch (error) {
     await shelf?.close().catch(() => {}); shelf = null; const recovered = recoverLegacyCapture();

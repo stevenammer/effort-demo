@@ -10,7 +10,7 @@ const root = new URL('../', import.meta.url);
 test('manifest exactly matches shell assets and worker bytes', async () => {
  const actual = await manifest(); assert.deepEqual(SHELL_ASSETS, actual.assets); assert.equal(SHELL_VERSION, actual.version); assert.equal(SHELL_WORKER_HASH, actual.workerHash); assert.equal(await readFile(new URL('shell-manifest.js', root), 'utf8'), await source());
  assert.ok(SHELL_ASSETS.length <= 50); assert.ok(SHELL_ASSETS.some(x => x.path === 'index.html')); assert.ok(SHELL_ASSETS.some(x => x.path === 'public/index.html'));
- for (const item of SHELL_ASSETS) { assert.match(item.path, /^(index\.html|public\/[\w./-]+\.(html|js|css|svg))$/); assert.equal(createHash('sha256').update(await readFile(new URL(item.path, root))).digest('hex'), item.sha256); }
+ for (const item of SHELL_ASSETS) { assert.match(item.path, /^(index\.html|public\/[\w./-]+\.(html|js|css|svg|webmanifest))$/); assert.equal(createHash('sha256').update(await readFile(new URL(item.path, root))).digest('hex'), item.sha256); }
 });
 
 async function worker({ failPath } = {}) {

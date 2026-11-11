@@ -7,7 +7,7 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; font-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>E.F.F.O.R.T. · A little less to hold in your head</title>
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to the demo</a>
@@ -24,9 +24,10 @@
       <div class="rail-foot"><span class="dot"></span> Interactive demo<br><small>Synthetic examples. Your phone and private E.F.F.O.R.T. data aren't connected.</small></div>
     </aside>
     <div class="content">
-      <header class="topbar"><span class="eyebrow">E.F.F.O.R.T. / PUBLIC WALKTHROUGH</span><button id="capture-open" class="primary" disabled>+ Capture a thought</button></header>
+      <header class="topbar"><span class="eyebrow">E.F.F.O.R.T. / PUBLIC WALKTHROUGH</span><div class="actions"><button id="overload-toggle" class="text-button" type="button" aria-pressed="false">Capture-only mode</button><button id="capture-open" class="primary" disabled>+ Capture a thought</button></div></header>
       <main id="main" tabindex="-1" inert aria-busy="true">
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <section id="capture-only-panel" class="capture-only-panel" hidden><span class="eyebrow">CAPTURE-ONLY MODE</span><h1>Just get it out.</h1><p id="capture-only-next">Tomorrow's first step is still available if you chose one. Nothing else needs sorting right now.</p><button id="capture-only-open" class="primary" type="button">Capture a thought</button><button id="capture-only-exit" class="text-button" type="button">Return to the full workspace</button></section>
         <section id="view-home">
           <div class="page-heading"><span class="eyebrow">ROOM TO THINK</span><h1>One thing,<br>for now.</h1><p>Keep the thought. Choose the next step.<br>The rest doesn't have to disappear.</p></div>
           <article class="now-card"><div class="card-top"><span class="eyebrow">NOW</span><span id="now-origin" class="badge">Loading</span></div><h2 id="now-title"></h2><p id="now-reason" class="muted"></p><div class="actions"><button id="now-done" class="primary">Done with this</button><button id="now-original" class="quiet">See the original ↗</button><button id="hold-open" class="text-button">Hold my place…</button><button id="now-explore" class="text-button">Explore safely…</button></div></article>

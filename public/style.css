@@ -159,6 +159,18 @@ small,.small,.footnote {
   display:grid;
   gap:.45rem
 }
+
+.capture-only .rail,
+.capture-only footer,
+.capture-only #view-spans,
+.capture-only #view-thread,
+.capture-only #view-fort,
+.capture-only #view-engine,
+.capture-only #view-home { display: none !important; }
+.capture-only .shell { display: block; max-width: 760px; }
+.capture-only .content { min-height: 100vh; }
+.capture-only-panel { max-width: 620px; margin: 12vh auto; padding: 2rem; }
+.capture-only-panel h1 { font-size: clamp(2.8rem, 11vw, 5rem); margin: .3rem 0; }
 .rail nav button {
   display:flex;
   gap:.8rem;

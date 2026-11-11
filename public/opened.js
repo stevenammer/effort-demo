@@ -28,6 +28,16 @@ export function deriveOpened({ openedReceipts, captures, recovery }) {
   }
   return { opened, unknown };
 }
+// This is deliberately derived from exact opening receipts, rather than a
+// separate "seen" flag. That keeps the per-span state portable, auditable and
+// unable to prevent a capture when the optional opening history is unavailable.
+export function deriveSpanUnread({ openedReceipts, captures, recovery }, spanId) {
+  const reading = deriveOpened({ openedReceipts, captures, recovery });
+  const rows = captures.filter(capture => String(capture.span).trim().toLowerCase() === String(spanId).trim().toLowerCase());
+  const unknown = rows.filter(capture => reading.unknown.has(capture.id)).length;
+  const unread = rows.filter(capture => !reading.opened.has(capture.id) && !reading.unknown.has(capture.id)).length;
+  return { total: rows.length, unread, read: rows.length - unread - unknown, unknown };
+}
 export function createOpened({ db, ready = async () => {}, notify = () => {}, recoveryRecord }) {
   async function snapshot() {
     await ready(); return db.run(['meta', 'captures', 'quarantine', OPENED_TABLE], 'readonly', async tx => ({ epoch: await meta(tx, 'epoch'), captures: await request(tx.objectStore('captures').getAll()), recovery: await request(tx.objectStore('quarantine').getAll()), openedReceipts: await request(tx.objectStore(OPENED_TABLE).getAll()) }));

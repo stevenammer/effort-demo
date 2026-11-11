@@ -1,5 +1,13 @@
 # Opening context
 
+## Per-span unread state
+
+Attention Span cards derive their unread and opened counts from the exact local
+opening receipts already stored with the workspace. The count never fetches,
+tracks, or infers reading outside this browser. It is included in the existing
+complete browser backup because the receipts are included, and it is only a
+view: opening history being unavailable never blocks capture.
+
 Attention Spans show which exact posts and replies haven't been opened in this browser workspace. Counts live in the directory and chronological feed. They don't add a backlog to Home or change NOW.
 
 Opening a thread records only the original and replies displayed for that opening. The record means opened, not read, understood, agreed with or completed. A reply arriving while the thread is already open keeps its own label until the person explicitly marks displayed writing opened or opens the thread again. Opening a source-only dialog or browsing the directory doesn't acknowledge a whole conversation.

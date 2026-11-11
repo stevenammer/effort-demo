@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url).pathname;
-const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs', 'test/core-s5-fixes.test.mjs'];
+const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs', 'test/core-s5-fixes.test.mjs', 'test/opened.test.js'];
 const mutants = [
   ['skip readback hash comparison', 'return (await hash(record.text)) === record.hash;', 'return true;'],
   ['accept a tampered record', 'return (await hash(record.text)) === record.hash;', 'return record.id === id;'],
@@ -68,6 +68,7 @@ const mutants = [
   ['unknown option words are refused', "if (words[0]?.startsWith('-')) throw Error(`Unknown option", "if (false) throw Error(`Unknown option"],
   ['unknown exploration ID is refused', 'if (!await store.get(rest[0])) throw Error(', 'if (false) throw Error('],
   ['empty explorations say so', "if (!branches.length && !state.damaged.length) output(", "if (false) output("],
+  ['per-span unread does not count opened writing', '&& !reading.unknown.has(capture.id)).length;', '&& !reading.unknown.has(capture.id) && !reading.opened.has(capture.id)).length;'],
 ];
 
 function run(cwd, args) {
@@ -106,7 +107,7 @@ for (const [name, find, replace] of mutants) {
     const candidates = [
       'packages/core/capture.js', 'packages/core/export.js', 'packages/core/now.js', 'packages/storage/file.js',
       'apps/cli/lib.mjs', 'apps/cli/thinking.mjs', 'packages/core/spans.js', 'packages/core/sealed.js', 'packages/core/exploration.js', 'packages/core/moves.js',
-      'scripts/check-public.mjs', 'scripts/sync-core.mjs',
+      'scripts/check-public.mjs', 'scripts/sync-core.mjs', 'public/opened.js',
     ];
     const replacements = Array.isArray(find) ? find.map((value, index) => [value, replace[index]]) : [[find, replace]];
     for (const [needle, replacement] of replacements) {
