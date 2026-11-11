@@ -39,3 +39,22 @@ test('failed install removes incomplete cache and preserves prior cache', async 
  const w = await worker({ failPath: 'public/app.js' }); w.data.set('effort-offline-shell-v1-older-complete', new Map([['old', new Response('keep')]]));
  await assert.rejects(w.lifecycle('install'), /did not match/); assert.deepEqual([...w.data.keys()], ['effort-offline-shell-v1-older-complete']); assert.equal(await w.data.get('effort-offline-shell-v1-older-complete').get('old').text(), 'keep');
 });
+
+test('activation evicts retired shell caches while retaining one verified current shell', async () => {
+ const w = await worker(); await w.lifecycle('install');
+ const current = [...w.data.keys()][0];
+ w.data.set('effort-offline-shell-v1-retired-release', new Map([['old', new Response('old')]]));
+ w.data.set(`${current}-duplicate`, w.data.get(current));
+ await w.lifecycle('activate');
+ assert.deepEqual([...w.data.keys()], [current]);
+ assert.equal(w.counts().claimed, 1);
+});
+
+test('retired-cache cleanup preserves the active verified shell', async () => {
+ const w = await worker(); await w.lifecycle('install');
+ const current = [...w.data.keys()][0], replies = [];
+ w.data.set('effort-offline-shell-v1-retired-release', new Map([['old', new Response('old')]]));
+ await w.lifecycle('message', { data: { type: 'CLEAR_REGENERABLE_CACHES' }, ports: [{ postMessage: reply => replies.push(reply) }] });
+ assert.deepEqual([...w.data.keys()], [current]);
+ assert.deepEqual(JSON.parse(JSON.stringify(replies)), [{ ok: true, removed: 1 }]);
+});

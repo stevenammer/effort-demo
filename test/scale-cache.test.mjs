@@ -35,7 +35,8 @@ test('browser display windows keep a 10,000-row fake DOM list bounded and load m
   let page = boundedWindow(rows, 0, SPAN_WINDOW); host.replaceChildren(...page.rows);
   assert.equal(host.children.length, 50); assert.equal(page.hasMore, true);
   page = boundedWindow(rows, page.shown, THREAD_WINDOW); host.replaceChildren(...page.rows);
-  assert.equal(host.children.length, 150); assert.equal(page.shown, 150);
+  assert.equal(host.children.length, 100); assert.equal(page.start, 50); assert.equal(page.shown, 150);
+  assert.equal(page.rows[0].id, 50); assert.equal(page.rows.at(-1).id, 149);
 });
 
 test('cache budget and cleanup address only regenerable shell caches', async () => {

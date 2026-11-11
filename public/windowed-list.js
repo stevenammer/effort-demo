@@ -3,9 +3,18 @@
 export const SPAN_WINDOW = 50;
 export const THREAD_WINDOW = 100;
 
-export function boundedWindow(rows, shown = 0, limit = SPAN_WINDOW) {
+export function boundedWindow(rows, offset = 0, limit = SPAN_WINDOW) {
   const size = Math.max(1, Math.min(200, Math.floor(Number(limit) || SPAN_WINDOW)));
-  const start = Math.max(0, Math.floor(Number(shown) || 0));
+  const start = Math.min(rows.length, Math.max(0, Math.floor(Number(offset) || 0)));
   const end = Math.min(rows.length, start + size);
-  return { rows: rows.slice(0, end), shown: end, total: rows.length, hasMore: end < rows.length };
+  return {
+    rows: rows.slice(start, end),
+    start,
+    end,
+    shown: end,
+    total: rows.length,
+    hasOlder: end < rows.length,
+    hasNewer: start > 0,
+    hasMore: end < rows.length,
+  };
 }

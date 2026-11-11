@@ -1,8 +1,11 @@
 import { SHELL_VERSION, SHELL_ASSETS } from './shell-manifest.js';
 
-// Each successful install owns a complete, immutable cache. Prior versions are
-// intentionally retained: a tab still controlled by an older worker needs its
-// own shell. This cache contains only the release's fixed public files.
+// Each successful install owns a complete, immutable cache. On activation the
+// worker keeps one verified cache for its release and evicts every retired
+// shell. A user-approved activation has no clients controlled by the old
+// worker, so retired shells are safe to reclaim. The one-shell budget keeps
+// regenerable Cache Storage bounded without touching IndexedDB or the active
+// offline shell.
 const PREFIX = 'effort-offline-shell-v1-';
 const ownPrefix = `${PREFIX}${SHELL_VERSION}-`;
 const scope = new URL(self.registration.scope);
@@ -23,12 +26,25 @@ async function installShell() {
     await cache.put(marker, new Response(SHELL_VERSION));
   } catch (error) { await caches.delete(name); throw error; }
 }
+async function verifiedReleaseCache(name) {
+  const cache = await caches.open(name);
+  const response = await cache.match(marker);
+  return response?.ok && await response.text() === SHELL_VERSION ? cache : null;
+}
 async function releaseCache() {
   for (const name of await caches.keys()) if (name.startsWith(ownPrefix)) {
-    const cache = await caches.open(name);
-    if ((await cache.match(marker))?.ok) return cache;
+    const cache = await verifiedReleaseCache(name);
+    if (cache) return cache;
   }
   throw Error('Offline shell is unavailable.');
+}
+async function enforceShellBudget() {
+  let keep = null;
+  for (const name of await caches.keys()) if (name.startsWith(ownPrefix) && await verifiedReleaseCache(name)) { keep = name; break; }
+  if (!keep) throw Error('Offline shell is unavailable.');
+  let removed = 0;
+  for (const name of await caches.keys()) if (name.startsWith(PREFIX) && name !== keep && await caches.delete(name)) removed++;
+  return { keep, removed };
 }
 function assetUrl(request) {
   if (request.method !== 'GET') return null;
@@ -40,13 +56,13 @@ function assetUrl(request) {
   return assets.has(url.href) ? url.href : null;
 }
 self.addEventListener('install', event => { event.waitUntil(installShell()); });
-self.addEventListener('activate', event => { event.waitUntil(self.clients.claim()); });
+self.addEventListener('activate', event => { event.waitUntil(enforceShellBudget().then(() => self.clients.claim())); });
 self.addEventListener('message', event => {
   if (event.data?.type === 'APPLY_UPDATE') event.waitUntil(self.skipWaiting());
   else if (event.data?.type === 'CLAIM_CLIENTS') event.waitUntil(releaseCache().then(() => self.clients.claim()));
   else if (event.data?.type === 'SHELL_STATUS') event.waitUntil(releaseCache().then(() => event.ports?.[0]?.postMessage({ready:true, version:SHELL_VERSION})).catch(() => event.ports?.[0]?.postMessage({ready:false})));
   else if (event.data?.type === 'CLEAR_REGENERABLE_CACHES') event.waitUntil((async () => {
-    try { let removed = 0; for (const name of await caches.keys()) if (name.startsWith(PREFIX)) { if (await caches.delete(name)) removed++; } event.ports?.[0]?.postMessage({ ok: true, removed }); }
+    try { const { removed } = await enforceShellBudget(); event.ports?.[0]?.postMessage({ ok: true, removed }); }
     catch (error) { event.ports?.[0]?.postMessage({ ok: false, error: error.message }); }
   })());
 });

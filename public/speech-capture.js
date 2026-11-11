@@ -10,7 +10,7 @@ export function startBrowserSpeech({ browser = globalThis, onText, onState = () 
   recognition.lang = browser.navigator?.language || 'en-US';
   recognition.continuous = false;
   recognition.interimResults = true;
-  let finalText = '';
+  let finalText = '', receivedText = false, failed = false;
   recognition.onstart = () => onState('listening');
   recognition.onresult = event => {
     let interim = '';
@@ -19,10 +19,14 @@ export function startBrowserSpeech({ browser = globalThis, onText, onState = () 
       if (result.isFinal) finalText += result[0].transcript;
       else interim += result[0].transcript;
     }
-    onText(finalText + interim, { final: Boolean(finalText), interim });
+    const text = finalText + interim;
+    if (text.trim()) receivedText = true;
+    onText(text, { final: Boolean(finalText), interim });
   };
-  recognition.onerror = event => onState(`error:${event.error || 'unavailable'}`);
-  recognition.onend = () => onState('idle');
+  recognition.onerror = event => { failed = true; onState(`error:${event.error || 'unavailable'}`); };
+  // Recognition commonly emits `end` after an error. Do not turn a denial or
+  // unavailable result into a success-like idle state unless usable text arrived.
+  recognition.onend = () => { if (!failed || receivedText) onState('idle'); };
   recognition.start();
   return recognition;
 }

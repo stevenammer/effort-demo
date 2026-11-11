@@ -10,7 +10,7 @@ export async function cacheBudget({ cacheStorage = globalThis.caches } = {}) {
   return { supported: true, count: names.length, bytes: total, bytesLabel: bytes(total) };
 }
 
-/** Deletes only public shell caches. It has no access to IndexedDB. */
+/** Removes retired public shell caches. The active shell and IndexedDB stay intact. */
 export async function clearRegenerableCaches({ worker = globalThis.navigator?.serviceWorker?.controller, messageChannel = globalThis.MessageChannel } = {}) {
   if (!worker) throw Error('The installed offline shell is not controlling this page yet. Reload once, then retry.');
   if (!messageChannel) throw Error('This browser cannot request offline cache cleanup. Saved writing was not touched.');

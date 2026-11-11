@@ -5,7 +5,11 @@ import { recognitionConstructor, startBrowserSpeech } from '../public/speech-cap
 
 test('local safety routing catches plain acute self-harm statements without catching ordinary work stress', () => {
   assert.equal(safetySignal('I want to end my life.'), true);
+  assert.equal(safetySignal('I have a plan to kill myself tonight.'), true);
+  assert.equal(safetySignal('I want to take my own life.'), true);
+  assert.equal(safetySignal("I don't want to be alive."), true);
   assert.equal(safetySignal("I can't keep myself safe tonight."), true);
+  assert.equal(safetySignal('He said he wants to die.'), false);
   assert.equal(safetySignal('I am stressed about my work deadline and need a break.'), false);
   assert.equal(safetySignal('This project is killing my schedule.'), false);
 });
@@ -31,4 +35,17 @@ test('browser voice capture uses a fake recognizer and gives editable transcript
   assert.deepEqual(state, ['listening','idle']);
   assert.equal(heard[0].text, 'Draft words');
   assert.equal(heard[1].text, 'Final words');
+});
+
+test('browser voice capture may finish after an error only when it received text', () => {
+  class PartialRecognition {
+    start() {
+      this.onresult({ resultIndex: 0, results: [Object.assign([{ transcript: 'Keep these words' }], { isFinal: true })] });
+      this.onerror({ error: 'network' }); this.onend();
+    }
+  }
+  const states = [], heard = [];
+  startBrowserSpeech({ browser: { SpeechRecognition: PartialRecognition, navigator: { language: 'en-US' } }, onText: text => heard.push(text), onState: state => states.push(state) });
+  assert.deepEqual(heard, ['Keep these words']);
+  assert.deepEqual(states, ['error:network', 'idle']);
 });

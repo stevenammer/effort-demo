@@ -1,10 +1,14 @@
-// Local, deliberately small keyword check. It does not diagnose, report, or block writing.
+// Local, deliberately small first-person keyword check. It does not diagnose,
+// report, or block writing. Context, including quoted fiction, is not parsed.
 const SIGNALS = [
-  /\b(?:i\s+)?(?:want|plan|am\s+going|going)\s+to\s+(?:kill|end|take)\s+(?:my\s+)?life\b/i,
-  /\b(?:i\s+)?(?:want|plan|am\s+going|going)\s+to\s+die\b/i,
-  /\b(?:i\s+)?(?:am|feel)\s+suicidal\b/i,
-  /\b(?:i\s+)?(?:might|will|am\s+going\s+to)\s+self[-\s]?harm\b/i,
-  /\b(?:i\s+)?can(?:not|'t)\s+keep\s+(?:myself|me)\s+safe\b/i,
+  /\bi\s+(?:(?:have\s+)?(?:a\s+)?plan\s+to\s+|(?:want|am\s+going|going)\s+to\s+)?kill\s+myself\b/i,
+  /\bi\s+(?:(?:have\s+)?(?:a\s+)?plan\s+to\s+|(?:want|am\s+going|going)\s+to\s+)?end\s+my\s+life\b/i,
+  /\bi\s+(?:(?:have\s+)?(?:a\s+)?plan\s+to\s+|(?:want|am\s+going|going)\s+to\s+)?take\s+my\s+own\s+life\b/i,
+  /\bi\s+(?:want\s+to\s+)?die\b/i,
+  /\bi\s+(?:do\s+not|don't)\s+want\s+to\s+be\s+alive\b/i,
+  /\bi\s+(?:am|feel)\s+suicidal\b/i,
+  /\bi\s+(?:might|will|am\s+going\s+to)\s+self[-\s]?harm\b/i,
+  /\bi\s+can(?:not|'t)\s+keep\s+(?:myself|me)\s+safe\b/i,
 ];
 
 export function safetySignal(text) {

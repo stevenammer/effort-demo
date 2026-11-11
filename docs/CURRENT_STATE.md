@@ -20,6 +20,12 @@ open. The full suite could not be run in this
 sandbox because several existing tests spawn child processes and receive
 `EPERM`; focused opening tests, syntax, core-drift and the public guard passed.
 
+## Red-team fixes, November 11, 2026
+
+The local safety notice now recognizes the documented first-person acute phrases while deliberately avoiding third-person references. It remains a limited lexical check and cannot determine whether first-person wording is quoted fiction. Browser voice capture retains an error disclosure after recognition errors unless actual transcript text arrived. Share-target payloads are removed from the address before any existing-draft decision; an existing draft is never overwritten, and the discarded payload is disclosed without repeating it.
+
+Span and reply displays are sliding windows: each render has at most 50 posts or 100 replies, with explicit older and newer controls. Shell activation keeps one verified current immutable shell cache and evicts retired shell caches. That is the cache budget: one active, regenerable shell only. It never deletes IndexedDB data, drafts, captures, files, history, recovery copies, or the active shell.
+
 ## Completion audit, November 10, 2026
 
 `TODO.md` has eight top-level checkboxes. None is marked done. Seven are
