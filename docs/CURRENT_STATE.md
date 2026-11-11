@@ -16,9 +16,10 @@ flow is not yet verified. The scale/cache slice now has 50-post span and
 Cache Storage budget, and an explicit cleanup that only removes regenerable
 offline shells. The browser workspace still takes a full IndexedDB snapshot,
 so physical bounded reads and real-browser 10,000-post acceptance remain
-open. The full suite could not be run in this
-sandbox because several existing tests spawn child processes and receive
-`EPERM`; focused opening tests, syntax, core-drift and the public guard passed.
+open. The delegate's sandbox could not run the full suite because several
+existing tests spawn child processes and receive `EPERM`; focused opening
+tests, syntax, core-drift and the public guard passed there. The full suite
+runs fine outside that sandbox and passed (486 tests) on November 11, 2026.
 
 ## Red-team fixes, November 11, 2026
 

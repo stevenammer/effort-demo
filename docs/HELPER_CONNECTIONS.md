@@ -16,7 +16,7 @@ EFFORT_HELPER_LISTEN='YOUR_DEVICE_IP' \
 npm run helper
 ```
 
-EFFORT_HELPER_PORT still defaults to4319. The advertised origin must reach this listener with its exact Host header. Non-loopback listeners require explicit HTTPS. The default remains a127.0.0.1 HTTP listener, so existing local use needs no certificate. Certificate issuance, DNS, firewall access and deployment to someone's device aren't performed by this app. The browser can still ask for local-network permission. TLS/origin checks establish a configured connection, not an independent audit of the operator or model.
+EFFORT_HELPER_PORT still defaults to 4319. The advertised origin must reach this listener with its exact Host header. Non-loopback listeners require explicit HTTPS. The default remains a 127.0.0.1 HTTP listener, so existing local use needs no certificate. Certificate issuance, DNS, firewall access and deployment to someone's device aren't performed by this app. The browser can still ask for local-network permission. TLS/origin checks establish a configured connection, not an independent audit of the operator or model.
 
 The companion terminates TLS directly, requires the exact configured Host and permitted browser Origin, and authenticates each non-preflight request. It doesn't trust X-Forwarded-Host to rewrite the reviewed route. The reviewed HTTPS origin, explicit private backend and installed model must match at dispatch and readback. Paths, embedded credentials, query tokens and insecure non-loopback HTTP origins are refused. Backend restrictions, zero tools, no automatic model fallback, capacity/context limits and explicit invitation/start boundaries continue to apply.
 
