@@ -68,7 +68,7 @@ const mutants = [
   ['unknown option words are refused', "if (words[0]?.startsWith('-')) throw Error(`Unknown option", "if (false) throw Error(`Unknown option"],
   ['unknown exploration ID is refused', 'if (!await store.get(rest[0])) throw Error(', 'if (false) throw Error('],
   ['empty explorations say so', "if (!branches.length && !state.damaged.length) output(", "if (false) output("],
-  ['per-span unread does not count opened writing', '&& !reading.unknown.has(capture.id)).length;', '&& !reading.unknown.has(capture.id) && !reading.opened.has(capture.id)).length;'],
+  ['per-span unread does not count opened writing', 'filter(capture => !reading.opened.has(capture.id) && !reading.unknown.has(capture.id)).length;', 'filter(capture => !reading.unknown.has(capture.id)).length;'],
   ['bounded core window uses an adapter window', "if (typeof store.listWindow === 'function') {", 'if (false) {'],
   ['cache cleanup needs a controlled offline shell', "if (!worker) throw Error('The installed offline shell is not controlling this page yet. Reload once, then retry.');", 'if (false) throw Error(\'The installed offline shell is not controlling this page yet. Reload once, then retry.\');'],
 ];
