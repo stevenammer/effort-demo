@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url).pathname;
-const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs', 'test/core-s5-fixes.test.mjs', 'test/opened.test.js'];
+const suite = ['--test', '--test-concurrency=2', '--test-timeout=15000', 'test/core-s1.test.mjs', 'test/export.test.mjs', 'test/publication-guard.test.mjs', 'test/core-s5.test.mjs', 'test/core-s5-fixes.test.mjs', 'test/opened.test.js', 'test/scale-cache.test.mjs'];
 const mutants = [
   ['skip readback hash comparison', 'return (await hash(record.text)) === record.hash;', 'return true;'],
   ['accept a tampered record', 'return (await hash(record.text)) === record.hash;', 'return record.id === id;'],
@@ -69,6 +69,8 @@ const mutants = [
   ['unknown exploration ID is refused', 'if (!await store.get(rest[0])) throw Error(', 'if (false) throw Error('],
   ['empty explorations say so', "if (!branches.length && !state.damaged.length) output(", "if (false) output("],
   ['per-span unread does not count opened writing', '&& !reading.unknown.has(capture.id)).length;', '&& !reading.unknown.has(capture.id) && !reading.opened.has(capture.id)).length;'],
+  ['bounded core window uses an adapter window', "if (typeof store.listWindow === 'function') {", 'if (false) {'],
+  ['cache cleanup needs a controlled offline shell', "if (!worker) throw Error('The installed offline shell is not controlling this page yet. Reload once, then retry.');", 'if (false) throw Error(\'The installed offline shell is not controlling this page yet. Reload once, then retry.\');'],
 ];
 
 function run(cwd, args) {
@@ -107,7 +109,7 @@ for (const [name, find, replace] of mutants) {
     const candidates = [
       'packages/core/capture.js', 'packages/core/export.js', 'packages/core/now.js', 'packages/storage/file.js',
       'apps/cli/lib.mjs', 'apps/cli/thinking.mjs', 'packages/core/spans.js', 'packages/core/sealed.js', 'packages/core/exploration.js', 'packages/core/moves.js',
-      'scripts/check-public.mjs', 'scripts/sync-core.mjs', 'public/opened.js',
+      'scripts/check-public.mjs', 'scripts/sync-core.mjs', 'public/opened.js', 'public/cache-budget.js',
     ];
     const replacements = Array.isArray(find) ? find.map((value, index) => [value, replace[index]]) : [[find, replace]];
     for (const [needle, replacement] of replacements) {

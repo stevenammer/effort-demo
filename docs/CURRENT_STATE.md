@@ -11,10 +11,31 @@ people are manually named context, never inferred from text or sent anywhere.
 The same working tree also adds a reversible browser-local capture-only mode
 and PWA Share Target plumbing. Share Target content is only prefilled into the
 capture composer and needs an explicit save. The OS-level installed-PWA share
-flow is not yet verified. Scale/cache policy and the full item-by-item
-completion audit are still open. The full suite could not be run in this
+flow is not yet verified. The scale/cache slice now has 50-post span and
+100-reply DOM windows, a 10,000-post core bounded-window test, a visible
+Cache Storage budget, and an explicit cleanup that only removes regenerable
+offline shells. The browser workspace still takes a full IndexedDB snapshot,
+so physical bounded reads and real-browser 10,000-post acceptance remain
+open. The full suite could not be run in this
 sandbox because several existing tests spawn child processes and receive
 `EPERM`; focused opening tests, syntax, core-drift and the public guard passed.
+
+## Completion audit, November 10, 2026
+
+`TODO.md` has eight top-level checkboxes. None is marked done. Seven are
+**partial** and one, release evidence, is **not done** in this continuation.
+The item-by-item evidence and remaining gaps are in `TODO.md` beside each
+checkbox, rather than being inferred from this historical dev log. There are
+no checkboxes in this document.
+
+The current scale/cache evidence is `packages/core/spans.js` and
+`test/scale-cache.test.mjs`: a capability-aware core window reads 50 of
+10,000 posts through a bounded fake adapter; a fake-DOM browser-module test
+keeps only 50 then 150 rows mounted; cache-budget/cleanup tests prove the
+cleanup protocol addresses shell caches only. `public/app.js` applies 50-post
+and 100-reply windows. This does not prove the production IndexedDB adapter
+uses cursors, actual Chromium remains responsive at 10,000 records, or a
+cache size can be known when response headers omit lengths.
 
 ## Start here
 

@@ -167,6 +167,25 @@ export function createSpans({ store, hash, now, id }) {
     return Promise.all(mine.map(view));
   }
 
+  /**
+   * A bounded, stable reading window for callers that don't need every post.
+   * Adapters may provide listWindow in the future; keeping the envelope here
+   * gives browser and CLI callers one pagination contract now without changing
+   * the long-standing listPosts result.
+   */
+  async function listPostsWindow(spanName, { offset = 0, limit = 50 } = {}) {
+    const start = Math.max(0, Math.floor(Number(offset) || 0));
+    const size = Math.max(1, Math.min(200, Math.floor(Number(limit) || 50)));
+    const wanted = spanName === undefined ? null : spanKey(spanName);
+    if (typeof store.listWindow === 'function') {
+      const page = await store.listWindow({ offset: start, limit: size, matches: record => wanted === null || spanKey(spanOf(record)) === wanted });
+      const posts = await Promise.all(page.records.map(view));
+      return { posts, offset: page.offset, next: page.next, total: page.total, hasMore: page.hasMore };
+    }
+    const all = await listPosts(spanName), posts = all.slice(start, start + size);
+    return { posts, offset: start, next: start + posts.length, total: all.length, hasMore: start + posts.length < all.length };
+  }
+
   /** The whole thread around a post, nested. Damaged posts stay visible and are marked, never hidden or fixed. */
   async function thread(postId) {
     const records = await store.list(), byId = new Map(records.map(r => [r.id, r]));
@@ -195,6 +214,6 @@ export function createSpans({ store, hash, now, id }) {
 
   return {
     listSpans: async () => { const { spans, damaged } = await readSpans(); return structuredClone({ spans, damaged }); },
-    createSpan, setAsideSpan, post, reply, getPost, listPosts, thread,
+    createSpan, setAsideSpan, post, reply, getPost, listPosts, listPostsWindow, thread,
   };
 }

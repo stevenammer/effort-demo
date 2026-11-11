@@ -14,6 +14,8 @@ import { organizeText, titleOf } from './core/ef.js';
 import { createStore, KEY, LIMITS } from './store.js';
 import { spanKey, parentOf, threadRoot } from './spans.js';
 import { createDraftShelf } from './drafts.js';
+import { boundedWindow, SPAN_WINDOW, THREAD_WINDOW } from './windowed-list.js';
+import { cacheBudget, clearRegenerableCaches } from './cache-budget.js';
 
 const $ = id => document.getElementById(id);
 const element = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -49,6 +51,7 @@ function renderCapturePreview() {
   catch { host.replaceChildren(element('p', 'Organization is unavailable. You can still save the original.', 'small'), element('pre', text, 'raw')); }
 }
 let store, state, activeSpan = null, threadId = null, replyTarget = null, currentView = 'home', sourceId, rawView = true, epoch = 0, saving = false, storageHealthy = true, booting = true, refreshing = Promise.resolve();
+let spanShown = SPAN_WINDOW, repliesShown = THREAD_WINDOW;
 let shelf, workspaceEpoch, fenced = false, resetting = false;
 let artifactTarget = null, artifactEpoch, artifactSaving = false, artifactSelection = null, artifactFocusPending = false;
 let navigationVersion = 0, explorationNavigation = 0, explorationRoute = 'home';
@@ -102,9 +105,11 @@ function showView(route, focus = true) {
   const selectedBranch = branchSelection && state?.explorations?.find(b => b.id === branchSelection), branchSource = selectedBranch && state?.captures.find(c => c.id === selectedBranch.sourceId);
   const selectedFile = artifactSelection && state?.artifacts?.find(a => a.id === artifactSelection), fileSource = selectedFile && state?.captures.find(c => c.id === selectedFile.captureId);
   currentView = base === 'person' ? 'spans' : base === 'branch' ? (branchSource ? 'thread' : 'spans') : base === 'artifact' ? (fileSource ? 'thread' : 'spans') : base === 'span' ? 'spans' : ['home', 'spans', 'thread', 'fort', 'engine'].includes(base) ? base : 'home';
+  const priorSpan = activeSpan;
   try { activeSpan = base === 'person' ? spanKey('People') : (base === 'artifact' && !fileSource || base === 'branch' && !branchSource) ? spanKey('Workspace') : base === 'span' ? decodeURIComponent(encoded ?? '') : null; } catch { activeSpan = null; }
+  if (activeSpan !== priorSpan) spanShown = SPAN_WINDOW;
   const nextThread = base === 'branch' && branchSource ? branchSource.id : base === 'artifact' && fileSource ? fileSource.id : base === 'thread' ? encoded : null;
-  if (threadId !== nextThread) { renderedOpening = null; openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
+  if (threadId !== nextThread) { repliesShown = THREAD_WINDOW; renderedOpening = null; openingViewToken++; threadOpeningPending = !!nextThread; if (fenced && !adopted.has(`reply:${threadId}`)) volatileReplies.set(threadId, replyBody()); else persistReplyDraft(); threadId = nextThread; replyTarget = null; loadReplyDraft(); }
   for (const name of ['home', 'spans', 'thread', 'fort', 'engine']) $(`view-${name}`).hidden = name !== currentView;
   document.querySelectorAll('.rail [data-view]').forEach(button => {
     if (button.dataset.view === (currentView === 'thread' ? 'spans' : currentView)) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
@@ -223,7 +228,8 @@ function renderSpans() {
   const posts = roots().filter(c => spanKey(c.span) === span.id).slice().reverse();
   const byId = new Map(state.captures.map(c => [c.id, c])), counts = new Map();
   for (const c of state.captures) { const root = threadRoot(c, byId); if (root && root.id !== c.id) counts.set(root.id, (counts.get(root.id) ?? 0) + 1); }
-  $('span-entries').replaceChildren(...posts.map(capture => {
+  const page = boundedWindow(posts, spanShown, SPAN_WINDOW);
+  $('span-entries').replaceChildren(...page.rows.map(capture => {
     const group = element('article', undefined, 'journal-post'); const heading = element('div', undefined, 'entry-heading');
     heading.append(element('span', `${formatDate(capture.createdAt)} · ${capture.sample ? 'FICTIONAL EXAMPLE' : 'DEMO POST'}`, 'eyebrow'));
     group.append(heading, element('h2', displayTitle(capture.text, 90)), element('p', readablePreview(capture.text, 360), 'post-excerpt'));
@@ -234,6 +240,7 @@ function renderSpans() {
     actions.append(open, original); group.append(actions); return group;
   }));
   if (!posts.length) $('span-entries').append(element('p', 'No posts yet. Capture something here without turning it into a task.', 'empty'));
+  else if (page.hasMore) { const more = element('button', `Load ${Math.min(SPAN_WINDOW, page.total - page.shown)} older posts`, 'quiet'); more.type = 'button'; more.onclick = () => { spanShown += SPAN_WINDOW; renderSpans(); }; $('span-entries').append(more, element('p', `${page.shown} of ${page.total} posts shown. Older posts stay saved locally.`, 'small')); }
 }
 function renderThread() {
   if (currentView !== 'thread') return;
@@ -265,7 +272,8 @@ function renderThread() {
   collect(root.id, 0);
   $('replies-heading').textContent = `${rows.length} repl${rows.length === 1 ? 'y' : 'ies'}`;
   const reading = openingState();
-  $('thread-replies').replaceChildren(...rows.map(({ capture, depth }) => {
+  const replyPage = boundedWindow(rows, repliesShown, THREAD_WINDOW);
+  $('thread-replies').replaceChildren(...replyPage.rows.map(({ capture, depth }) => {
     const card = element('article', undefined, `thread-reply depth-${Math.min(depth, 3)}`); card.id = `reply-${capture.id}`;
     card.append(element('p', `${capture.helperEventId?'Prepared helper proposal':'You'} · ${formatDate(capture.createdAt)} · Reply${depth ? ` at depth ${depth + 1}` : ''}`, 'small'), renderReading(capture.text, { headingBase: 3 }));
     const badge = openingBadge(capture, reading); if (badge) card.append(element('p', badge, 'small unopened-badge'));
@@ -277,6 +285,7 @@ function renderThread() {
     actions.append(button, source, permalink, attachButton(capture)); card.append(actions); if (capture.id === threadId) card.classList.add('selected-reply'); return card;
   }));
   if (!rows.length) $('thread-replies').append(element('p', 'Room for the next thought. Replies will stay attached to this post.', 'muted'));
+  else if (replyPage.hasMore) { const more = element('button', `Load ${Math.min(THREAD_WINDOW, replyPage.total - replyPage.shown)} older replies`, 'quiet'); more.type = 'button'; more.onclick = () => { repliesShown += THREAD_WINDOW; renderThread(); }; $('thread-replies').append(more, element('p', `${replyPage.shown} of ${replyPage.total} replies shown. Older replies stay saved locally.`, 'small')); }
   if (!replyTarget && !value('reply-text')) replyTarget = root.id;
   const target = state.captures.find(c => c.id === replyTarget);
   const validTarget = target && threadRoot(target, state.captures)?.id === root.id;
@@ -944,7 +953,7 @@ async function replaceDemo(samples) {
     let draftCleanupError;
     try { for (const key of Object.keys(localStorage)) if (key === DRAFT || key.startsWith(`${KEY}-reply-`) || key.startsWith(`${KEY}-shelf-`)) localStorage.removeItem(key); } catch (error) { draftCleanupError = error; }
     await shelf?.close(); shelf = null;
-    ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
+    ++replyLoad; replyLoading = false; threadId = null; replyTarget = null; spanShown = SPAN_WINDOW; repliesShown = THREAD_WINDOW; dropping = null; holdExpected = null; holdRoute = 'home'; holdContext = undefined; explorationDraft = null; distillationDraft = null;
     threadReviewUI?.reset(); peopleUI?.reset(); revisionsUI?.reset(); revisionPreparationPending.clear(); helperPreparationPending.clear(); personSelection = null;
     artifactTarget = null; artifactSelection = null; branchSelection = null; moveEditing = null; branchEditing = null; $('artifact-file').value = ''; status('artifact-error', '');
     shadows.clear(); versions.clear(); adopted.clear(); completed.clear(); volatileReplies.clear(); requestIds.clear();
@@ -987,6 +996,13 @@ async function renderDraftRecovery() {
 }
 $('draft-recovery').addEventListener('toggle', () => { if ($('draft-recovery').open) renderDraftRecovery(); });
 $('lock-note').textContent = 'IndexedDB transactions serialize writes across tabs. Changed records refresh when another tab saves or this window becomes active. Browser storage can still be erased: keep downloaded backups.';
+async function refreshCacheBudget() {
+  const target = $('cache-budget'); if (!target) return;
+  try { const report = await cacheBudget(); target.textContent = report.supported ? `${report.bytesLabel} in regenerable offline shell cache${report.count === 1 ? '' : 's'}. Saved captures, drafts, files and history are IndexedDB data and aren't part of cleanup.` : 'This browser does not report offline cache size. Saved captures, drafts, files and history are never part of cleanup.'; }
+  catch (error) { target.textContent = `Offline cache size is unavailable: ${error.message}`; }
+}
+$('clear-cache').onclick = async () => { const button = $('clear-cache'); button.disabled = true; try { const removed = await clearRegenerableCaches(); await refreshCacheBudget(); notice(`Removed ${removed} regenerable offline shell cache${removed === 1 ? '' : 's'}. Saved captures, drafts, files and history were not touched.`); } catch (error) { fail(error); } finally { button.disabled = false; } };
+$('cache-budget-panel').addEventListener('toggle', () => { if ($('cache-budget-panel').open) refreshCacheBudget(); });
 function recoverLegacyCapture() {
   if (workspaceEpoch !== undefined && workspaceEpoch !== null) return false;
   try { const raw = localStorage.getItem(DRAFT); if (!raw) return false; const draft = JSON.parse(raw); if (typeof draft?.text !== 'string' || draft.text.length > LIMITS.text || typeof draft.span !== 'string') return false; setValue('capture-text', draft.text); $('capture-span').value = draft.span; return true; } catch { return false; }

@@ -45,6 +45,10 @@ self.addEventListener('message', event => {
   if (event.data?.type === 'APPLY_UPDATE') event.waitUntil(self.skipWaiting());
   else if (event.data?.type === 'CLAIM_CLIENTS') event.waitUntil(releaseCache().then(() => self.clients.claim()));
   else if (event.data?.type === 'SHELL_STATUS') event.waitUntil(releaseCache().then(() => event.ports?.[0]?.postMessage({ready:true, version:SHELL_VERSION})).catch(() => event.ports?.[0]?.postMessage({ready:false})));
+  else if (event.data?.type === 'CLEAR_REGENERABLE_CACHES') event.waitUntil((async () => {
+    try { let removed = 0; for (const name of await caches.keys()) if (name.startsWith(PREFIX)) { if (await caches.delete(name)) removed++; } event.ports?.[0]?.postMessage({ ok: true, removed }); }
+    catch (error) { event.ports?.[0]?.postMessage({ ok: false, error: error.message }); }
+  })());
 });
 self.addEventListener('fetch', event => {
   // Share Target posts become a same-origin capture URL. The page owns the

@@ -1,3 +1,4 @@
+import { LIMITS } from '../public/constants.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
@@ -40,7 +41,7 @@ test('supplied transcript proposals preserve their distinct exact source even wh
 });
 
 test('proposal capacity refusal preserves all existing originals and revision writing without truncation',async()=>{
- const x=await setup();try{await x.raw.run(['captures'],'readwrite',async tx=>{const table=tx.objectStore('captures'),rows=await request(table.getAll());for(let n=rows.length;n<1000;n++)await request(table.add({...x.source,id:crypto.randomUUID()}));});const before=await x.store.exportData();await assert.rejects(x.store.prepareRevisionProposal(x.input),/capture limit/);assert.equal(await x.store.exportData(),before);}finally{await x.raw.close();await x.close();}
+ const x=await setup();try{await x.raw.run(['captures'],'readwrite',async tx=>{const table=tx.objectStore('captures'),rows=await request(table.getAll());for(let n=rows.length;n<LIMITS.captures;n++)await request(table.add({...x.source,id:crypto.randomUUID()}));});const before=await x.store.exportData();await assert.rejects(x.store.prepareRevisionProposal(x.input),/capture limit/);assert.equal(await x.store.exportData(),before);}finally{await x.raw.close();await x.close();}
 });
 
 test('structured storage cannot disguise missing provenance as an ordinary capture with undefined fields',async()=>{
