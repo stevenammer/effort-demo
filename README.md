@@ -6,6 +6,8 @@
 
 E.F.F.O.R.T. (Executive Function For Organizing Random Thoughts) is my personal Android app for people whose thoughts arrive faster than they can sort them. This is a public, browser-only walkthrough of how it thinks.
 
+Credits and licenses for what this builds on: [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+
 ## What this shows
 
 - **Your original is never lost.** Every capture is read back and SHA-256 verified before it says SAVED. Organizing is a reversible view, never a rewrite.
