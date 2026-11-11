@@ -1,0 +1,7 @@
+/build/
+/.gradle/
+/capacitor-cordova-android-plugins/
+/capacitor.settings.gradle
+/app/capacitor.build.gradle
+/app/build/
+/.idea/

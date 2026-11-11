@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simplified adaptive mark derived from public/favicon.svg's e. mark. -->
+    <path android:fillColor="#ECE6D6" android:pathData="M54,21a33,33 0,1 0,0.1,66L54.1,75a21,21 0,1 1,0,-42c11.6,0 21,9.4 21,21L39,54c0,3.8 1,7.4 3.1,10.5A21,21 0,0 0,54,75v12A33,33 0,0 0,87,54C87,35.8 72.2,21 54,21zM39.9,45.5L70.3,45.5A21,21 0,0 0,39.9,45.5z" />
+    <path android:fillColor="#ECE6D6" android:pathData="M81,75m-6,0a6,6 0,1 0,12 0a6,6 0,1 0,-12 0" />
+</vector>

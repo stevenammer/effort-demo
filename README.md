@@ -27,6 +27,8 @@ The package READMEs show how to use the code from this repository.
 
 Browser speech capture and the local-only safety note have deliberately narrow boundaries. See [voice and safety limits](docs/VOICE_AND_SAFETY.md).
 
+The public walkthrough also has a local-only Capacitor Android shell. See [Android build and verification notes](docs/ANDROID.md).
+
 ## How it was built
 
 I wrote the specs and decisions, agents wrote most of the code, and I red-teamed it and chose what shipped. One small example, start to finish, is in the [case study](docs/CASE_STUDY.md). The full list of attacks and defects is [RED_TEAM.md](docs/RED_TEAM.md). The running dev log, including what is verified and what isn't, is [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md).

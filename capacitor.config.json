@@ -1,0 +1,13 @@
+{
+  "appId": "org.effort.publicdemo",
+  "appName": "E.F.F.O.R.T. Public Walkthrough",
+  "webDir": "android-web",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

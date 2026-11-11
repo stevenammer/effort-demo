@@ -1,4 +1,5 @@
 node_modules/
+android-web/
 .env
 .env.*
 !.env.example
